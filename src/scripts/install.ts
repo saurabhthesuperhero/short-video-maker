@@ -23,8 +23,8 @@ export async function install() {
   const musicManager = new MusicManager(config);
   try {
     musicManager.ensureMusicFilesExist();
-  } catch (err) {
-    logger.error(err, "Missing music files");
+  } catch (error: unknown) {
+    logger.error(error, "Missing music files");
     process.exit(1);
   }
 }
@@ -33,6 +33,6 @@ install()
   .then(() => {
     logger.info("Installation complete");
   })
-  .catch((err: unknown) => {
-    logger.error(err, "Installation failed");
+  .catch((error: unknown) => {
+    logger.error(error, "Installation failed");
   });

@@ -5,6 +5,7 @@ import { PexelsAPI } from "./Pexels";
 import { test, assert, expect } from "vitest";
 import fs from "fs-extra";
 import path from "path";
+import { OrientationEnum } from "../../types/shorts";
 
 test("test pexels", async () => {
   const mockResponse = fs.readFileSync(
@@ -28,7 +29,7 @@ test("should time out", async () => {
     .reply(200, {});
   expect(async () => {
     const pexels = new PexelsAPI("asdf");
-    await pexels.findVideo(["dog"], 2.4, [], 100);
+    await pexels.findVideo(["dog"], 2.4, [], OrientationEnum.portrait, 100);
   }).rejects.toThrow(
     expect.objectContaining({
       name: "TimeoutError",

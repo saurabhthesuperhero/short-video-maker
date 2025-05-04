@@ -31,9 +31,9 @@ export class FFMpeg {
           logger.debug("Audio normalization complete");
           resolve(outputPath);
         })
-        .on("error", (err) => {
-          logger.error(err, "Error normalizing audio:");
-          reject(err);
+        .on("error", (error: unknown) => {
+          logger.error(error, "Error normalizing audio:");
+          reject(error);
         })
         .save(outputPath);
     });

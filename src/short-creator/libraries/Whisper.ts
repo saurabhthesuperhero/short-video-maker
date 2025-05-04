@@ -9,6 +9,8 @@ import { Config } from "../../config";
 import type { Caption } from "../../types/shorts";
 import { logger } from "../../logger";
 
+export const ErrorWhisper = new Error("There was an error with WhisperCpp");
+
 export class Whisper {
   constructor(private config: Config) {}
 
@@ -34,6 +36,7 @@ export class Whisper {
           );
         },
       });
+      // todo run the jfk command to check if everything is ok
       logger.debug("Whisper model downloaded");
     }
 

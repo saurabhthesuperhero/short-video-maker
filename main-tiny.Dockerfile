@@ -59,6 +59,7 @@ RUN pnpm install --prefer-offline --no-cache --prod
 
 FROM prod-deps AS build
 COPY tsconfig.json /app
+COPY tsconfig.build.json /app
 COPY src /app/src
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 RUN pnpm build

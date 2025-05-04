@@ -16,7 +16,8 @@ Content-Type: application/json
       "music": "chill",
       "captionPosition": "center",
       "captionBackgroundColor": "#ff0000",
-      "voice": "bm_lewis"
+      "voice": "bm_lewis",
+      "orientation": "landscape"
     }
 }
 
@@ -26,6 +27,12 @@ Content-Type: application/json
 
 # @name get_video_status
 GET {{host}}/api/short-video/{{videoId}}/status HTTP/1.1
+Accept: application/json
+
+###
+
+# @name list_of_videos
+GET {{host}}/api/short-videos HTTP/1.1
 Accept: application/json
 
 ###

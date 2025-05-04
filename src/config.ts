@@ -26,6 +26,7 @@ export class Config {
   private libsDirPath: string;
   private staticDirPath: string;
 
+  public installationSuccessfulPath: string;
   public whisperInstallPath: string;
   public videosDirPath: string;
   public tempDirPath: string;
@@ -54,6 +55,10 @@ export class Config {
     this.whisperInstallPath = path.join(this.libsDirPath, "whisper");
     this.videosDirPath = path.join(this.dataDirPath, "videos");
     this.tempDirPath = path.join(this.dataDirPath, "temp");
+    this.installationSuccessfulPath = path.join(
+      this.dataDirPath,
+      "installation-successful",
+    );
 
     fs.ensureDirSync(this.dataDirPath);
     fs.ensureDirSync(this.libsDirPath);
@@ -98,3 +103,5 @@ export class Config {
     }
   }
 }
+
+export const KOKORO_MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
