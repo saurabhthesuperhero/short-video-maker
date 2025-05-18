@@ -20,7 +20,6 @@ export class Remotion {
     await ensureBrowser();
 
     const bundled = await bundle({
-      publicDir: config.musicDirPath,
       entryPoint: path.join(
         config.packageDirPath,
         config.devMode ? "src" : "dist",

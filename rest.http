@@ -13,11 +13,12 @@ Content-Type: application/json
     ],
     "config": {
       "paddingBack": 1500,
-      "music": "chill",
+      "music": "uneasy",
       "captionPosition": "center",
       "captionBackgroundColor": "#ff0000",
       "voice": "bm_lewis",
-      "orientation": "landscape"
+      "orientation": "portrait",
+      "musicVolume": "muted"
     }
 }
 

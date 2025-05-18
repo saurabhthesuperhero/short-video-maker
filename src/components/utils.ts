@@ -1,9 +1,10 @@
 import { z } from "zod";
-import type {
-  Caption,
-  CaptionPage,
-  CaptionLine,
-  OrientationEnum,
+import {
+  type Caption,
+  type CaptionPage,
+  type CaptionLine,
+  type OrientationEnum,
+  MusicVolumeEnum,
 } from "../types/shorts";
 import { AvailableComponentsEnum, type OrientationConfig } from "./types";
 
@@ -23,9 +24,11 @@ export const shortVideoSchema = z.object({
     captionPosition: z.enum(["top", "center", "bottom"]).optional(),
     captionBackgroundColor: z.string().optional(),
     durationMs: z.number(),
+    musicVolume: z.nativeEnum(MusicVolumeEnum).optional(),
   }),
   music: z.object({
     file: z.string(),
+    url: z.string(),
     start: z.number(),
     end: z.number(),
   }),
@@ -141,4 +144,21 @@ export function getOrientationConfig(orientation: OrientationEnum) {
   };
 
   return config[orientation];
+}
+
+export function calculateVolume(
+  level: MusicVolumeEnum = MusicVolumeEnum.high,
+): [number, boolean] {
+  switch (level) {
+    case "muted":
+      return [0, true];
+    case "low":
+      return [0.2, false];
+    case "medium":
+      return [0.45, false];
+    case "high":
+      return [0.7, false];
+    default:
+      return [0.7, false];
+  }
 }

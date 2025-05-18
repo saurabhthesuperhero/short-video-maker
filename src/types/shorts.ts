@@ -76,6 +76,13 @@ export enum OrientationEnum {
   portrait = "portrait",
 }
 
+export enum MusicVolumeEnum {
+  muted = "muted",
+  low = "low",
+  medium = "medium",
+  high = "high",
+}
+
 export const renderConfig = z.object({
   paddingBack: z
     .number()
@@ -105,6 +112,10 @@ export const renderConfig = z.object({
     .nativeEnum(OrientationEnum)
     .optional()
     .describe("Orientation of the video, default is portrait"),
+  musicVolume: z
+    .nativeEnum(MusicVolumeEnum)
+    .optional()
+    .describe("Volume of the music, default is high"),
 });
 export type RenderConfig = z.infer<typeof renderConfig>;
 
@@ -144,6 +155,9 @@ export type Music = {
   start: number;
   end: number;
   mood: string;
+};
+export type MusicForVideo = Music & {
+  url: string;
 };
 
 export type MusicTag = `${MusicMoodEnum}`;

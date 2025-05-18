@@ -12,5 +12,11 @@
     "declaration": true,
     "jsx": "react-jsx"
   },
-  "exclude": ["remotion.config.ts", "node_modules", "dist", "vitest.config.ts"]
+  "exclude": [
+    "remotion.config.ts",
+    "node_modules",
+    "dist",
+    "vitest.config.ts",
+    "src/ui"
+  ]
 }

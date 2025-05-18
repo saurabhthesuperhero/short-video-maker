@@ -17,7 +17,9 @@ export class Kokoro {
     audioLength: number;
   }> {
     const splitter = new TextSplitterStream();
-    const stream = this.tts.stream(splitter);
+    const stream = this.tts.stream(splitter, {
+      voice,
+    });
     splitter.push(text);
     splitter.close();
 

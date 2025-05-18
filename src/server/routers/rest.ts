@@ -34,6 +34,8 @@ export class APIRouter {
         try {
           const input = validateCreateShortInput(req.body);
 
+          logger.info({ input }, "Creating short video");
+
           const videoId = this.shortCreator.addToQueue(
             input.scenes,
             input.config,
@@ -141,7 +143,6 @@ export class APIRouter {
           });
           return;
         }
-        const tmpFileBuffer = fs.readFileSync(tmpFilePath);
 
         if (tmpFile.endsWith(".mp3")) {
           res.setHeader("Content-Type", "audio/mpeg");
@@ -150,7 +151,44 @@ export class APIRouter {
           res.setHeader("Content-Type", "audio/wav");
         }
 
-        res.send(tmpFileBuffer);
+        const tmpFileStream = fs.createReadStream(tmpFilePath);
+        tmpFileStream.on("error", (error) => {
+          logger.error(error, "Error reading tmp file");
+          res.status(500).json({
+            error: "Error reading tmp file",
+            tmpFile,
+          });
+        });
+        tmpFileStream.pipe(res);
+      },
+    );
+
+    this.router.get(
+      "/music/:fileName",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        const { fileName } = req.params;
+        if (!fileName) {
+          res.status(400).json({
+            error: "fileName is required",
+          });
+          return;
+        }
+        const musicFilePath = path.join(this.config.musicDirPath, fileName);
+        if (!fs.existsSync(musicFilePath)) {
+          res.status(404).json({
+            error: "music file not found",
+          });
+          return;
+        }
+        const musicFileStream = fs.createReadStream(musicFilePath);
+        musicFileStream.on("error", (error) => {
+          logger.error(error, "Error reading music file");
+          res.status(500).json({
+            error: "Error reading music file",
+            fileName,
+          });
+        });
+        musicFileStream.pipe(res);
       },
     );
 

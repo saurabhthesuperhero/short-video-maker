@@ -4,12 +4,16 @@ import {
   useCurrentFrame,
   useVideoConfig,
   Audio,
-  staticFile,
   OffthreadVideo,
 } from "remotion";
 import { z } from "zod";
 import { loadFont } from "@remotion/google-fonts/BarlowCondensed";
-import { createCaptionPages, shortVideoSchema } from "../utils";
+
+import {
+  calculateVolume,
+  createCaptionPages,
+  shortVideoSchema,
+} from "../utils";
 
 const { fontFamily } = loadFont(); // "Barlow Condensed"
 
@@ -43,14 +47,17 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
     captionStyle = { bottom: 100 };
   }
 
+  const [musicVolume, musicMuted] = calculateVolume(config.musicVolume);
+
   return (
     <AbsoluteFill style={{ backgroundColor: "white" }}>
       <Audio
         loop
-        src={staticFile(music.file)}
+        src={music.url}
         startFrom={music.start * fps}
         endAt={music.end * fps}
-        volume={0.1}
+        volume={() => musicVolume}
+        muted={musicMuted}
       />
 
       {scenes.map((scene, i) => {

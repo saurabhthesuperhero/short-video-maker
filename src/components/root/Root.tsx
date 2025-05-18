@@ -30,6 +30,11 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
         defaultProps={{
           music: {
+            url:
+              "http://localhost:3123/api/music/" +
+              encodeURIComponent(
+                "Aurora on the Boulevard - National Sweetheart.mp3",
+              ),
             file: "mellow-smooth-rap-beat-20230107-132480.mp3",
             start: 0,
             end: 175,
@@ -66,6 +71,11 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{
           music: {
+            url:
+              "http://localhost:3123/api/music/" +
+              encodeURIComponent(
+                "Aurora on the Boulevard - National Sweetheart.mp3",
+              ),
             file: "mellow-smooth-rap-beat-20230107-132480.mp3",
             start: 0,
             end: 175,
