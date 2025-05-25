@@ -78,8 +78,8 @@ ENV DOCKER=true
 ENV WHISPER_MODEL=base.en
 # number of chrome tabs to use for rendering
 ENV CONCURRENCY=1
-# video cache - 100MB
-ENV VIDEO_CACHE_SIZE_IN_BYTES=104857600
+# video cache - 2000MB
+ENV VIDEO_CACHE_SIZE_IN_BYTES=2097152000
 
 # install kokoro, headless chrome and ensure music files are present
 RUN node dist/scripts/install.js

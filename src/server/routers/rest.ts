@@ -150,6 +150,9 @@ export class APIRouter {
         if (tmpFile.endsWith(".wav")) {
           res.setHeader("Content-Type", "audio/wav");
         }
+        if (tmpFile.endsWith(".mp4")) {
+          res.setHeader("Content-Type", "video/mp4");
+        }
 
         const tmpFileStream = fs.createReadStream(tmpFilePath);
         tmpFileStream.on("error", (error) => {

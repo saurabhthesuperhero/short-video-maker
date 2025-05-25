@@ -12,7 +12,6 @@ While the MCP server can be used with an AI Agent (like n8n) the REST endpoints 
 
 You can find example n8n workflows created with the REST/MCP server [in this repository](https://github.com/gyoridavid/ai_agents_az/tree/main/episode_7).
 
-
 # TOC
 
 ## Getting started
@@ -31,6 +30,7 @@ You can find example n8n workflows created with the REST/MCP server [in this rep
 - [MCP](#mcp-server)
 
 ## Info
+
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Limitations](#limitations)
@@ -46,7 +46,6 @@ You can find example n8n workflows created with the REST/MCP server [in this rep
 # Tutorial with n8n
 
 [![Automated faceless video generation (n8n + MCP) with captions, background music, local and 100% free](https://img.youtube.com/vi/jzsQpn-AciM/0.jpg)](https://www.youtube.com/watch?v=jzsQpn-AciM)
-
 
 # Examples
 
@@ -102,10 +101,10 @@ On top of the general requirements, the following are necessary to run the serve
 ## Supported platforms
 
 - Ubuntu ≥ 22.04 (libc 2.5 for Whisper.cpp)
-    - Required packages: `git wget cmake ffmpeg curl make libsdl2-dev libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 libxkbcommon-dev libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2`
+  - Required packages: `git wget cmake ffmpeg curl make libsdl2-dev libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 libxrandr2 libxkbcommon-dev libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2`
 - Mac OS
-    - ffmpeg (`brew install ffmpeg`)
-    - node.js (tested on 22+)
+  - ffmpeg (`brew install ffmpeg`)
+  - node.js (tested on 22+)
 
 Windows is **NOT** supported at the moment (whisper.cpp installation fails occasionally).
 
@@ -113,7 +112,7 @@ Windows is **NOT** supported at the moment (whisper.cpp installation fails occas
 
 ## Scene
 
-Each video is assembled from multiple scenes. These scenes consists of 
+Each video is assembled from multiple scenes. These scenes consists of
 
 1. Text: Narration, the text the TTS will read and create captions from.
 2. Search terms: The keywords the server should use to find videos from Pexels API. If none can be found, joker terms are being used (`nature`, `globe`, `space`, `ocean`)
@@ -127,9 +126,9 @@ There are three docker images, for three different use cases. Generally speaking
 ### Tiny
 
 - Uses the `tiny.en` whisper.cpp model
-- Uses the `q4` quantized  kokoro model
+- Uses the `q4` quantized kokoro model
 - `CONCURRENCY=1` to overcome OOM errors coming from Remotion with limited resources
-- `VIDEO_CACHE_SIZE_IN_BYTES=104857600` (100mb) to overcome OOM errors coming from Remotion with limited resources
+- `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
 docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest-tiny
@@ -138,9 +137,9 @@ docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e 
 ### Normal
 
 - Uses the `base.en` whisper.cpp model
-- Uses the `fp32`  kokoro model
+- Uses the `fp32` kokoro model
 - `CONCURRENCY=1` to overcome OOM errors coming from Remotion with limited resources
-- `VIDEO_CACHE_SIZE_IN_BYTES=104857600` (100mb) to overcome OOM errors coming from Remotion with limited resources
+- `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
 docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest
@@ -153,7 +152,7 @@ If you own an Nvidia GPU and you want use a larger whisper model with GPU accele
 - Uses the `medium.en` whisper.cpp model (with GPU acceleration)
 - Uses `fp32` kokoro model
 - `CONCURRENCY=1` to overcome OOM errors coming from Remotion with limited resources
-- `VIDEO_CACHE_SIZE_IN_BYTES=104857600` (100mb) to overcome OOM errors coming from Remotion with limited resources
+- `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
 docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= --gpus=all gyoridavid/short-video-maker:latest-cuda
@@ -179,7 +178,7 @@ services:
 
 ```
 
-If you are using the [Self-hosted AI starter kit](https://github.com/n8n-io/self-hosted-ai-starter-kit) you want to add `networks: ['demo']` to the** `short-video-maker` service so you can reach it with http://short-video-maker:3123 in n8n.
+If you are using the [Self-hosted AI starter kit](https://github.com/n8n-io/self-hosted-ai-starter-kit) you want to add `networks: ['demo']` to the\*\* `short-video-maker` service so you can reach it with http://short-video-maker:3123 in n8n.
 
 # Web UI
 
@@ -208,41 +207,41 @@ You can load it on http://localhost:3123
 
 ## 🟢 Configuration
 
-| key | description | default |
-| --- | --- | --- |
-| PEXELS_API_KEY | [your (free) Pexels API key](https://www.pexels.com/api/) |  |
-| LOG_LEVEL | pino log level | info |
-| WHISPER_VERBOSE | whether the output of whisper.cpp should be forwarded to stdout | false |
-| PORT | the port the server will listen on | 3123 |
+| key             | description                                                     | default |
+| --------------- | --------------------------------------------------------------- | ------- |
+| PEXELS_API_KEY  | [your (free) Pexels API key](https://www.pexels.com/api/)       |         |
+| LOG_LEVEL       | pino log level                                                  | info    |
+| WHISPER_VERBOSE | whether the output of whisper.cpp should be forwarded to stdout | false   |
+| PORT            | the port the server will listen on                              | 3123    |
 
 ## ⚙️ System configuration
 
-| key | description | default |
-| --- | --- | --- |
-| KOKORO_MODEL_PRECISION | The size of the Kokoro model to use. Valid options are `fp32`, `fp16`, `q8`, `q4`, `q4f16` | depends, see the descriptions of the docker images above ^^ |
-| CONCURRENCY | [concurrency refers to how many browser tabs are opened in parallel during a render. Each Chrome tab renders web content and then screenshots it.](https://www.remotion.dev/docs/terminology/concurrency). Tweaking this value helps with running the project with limited resources. | depends, see the descriptions of the docker images above ^^ |
-| VIDEO_CACHE_SIZE_IN_BYTES | Cache for [<OffthreadVideo>](https://remotion.dev/docs/offthreadvideo) frames in Remotion. Tweaking this value helps with running the project with limited resources. | depends, see the descriptions of the docker images above ^^ |
+| key                       | description                                                                                                                                                                                                                                                                           | default                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| KOKORO_MODEL_PRECISION    | The size of the Kokoro model to use. Valid options are `fp32`, `fp16`, `q8`, `q4`, `q4f16`                                                                                                                                                                                            | depends, see the descriptions of the docker images above ^^ |
+| CONCURRENCY               | [concurrency refers to how many browser tabs are opened in parallel during a render. Each Chrome tab renders web content and then screenshots it.](https://www.remotion.dev/docs/terminology/concurrency). Tweaking this value helps with running the project with limited resources. | depends, see the descriptions of the docker images above ^^ |
+| VIDEO_CACHE_SIZE_IN_BYTES | Cache for [<OffthreadVideo>](https://remotion.dev/docs/offthreadvideo) frames in Remotion. Tweaking this value helps with running the project with limited resources.                                                                                                                 | depends, see the descriptions of the docker images above ^^ |
 
 ## ⚠️ Danger zone
 
-| key | description | default |
-| --- | --- | --- |
+| key           | description                                                                                                                                                                              | default                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | WHISPER_MODEL | Which whisper.cpp model to use. Valid options are `tiny`, `tiny.en`, `base`, `base.en`, `small`, `small.en`, `medium`, `medium.en`, `large-v1`, `large-v2`, `large-v3`, `large-v3-turbo` | Depends, see the descriptions of the docker images above. For npm, the default option is `medium.en` |
-| DATA_DIR_PATH | the data directory of the project | `~/.ai-agents-az-video-generator` with npm, `/app/data` in the Docker images |
-| DOCKER | whether the project is running in a Docker container | `true` for the docker images, otherwise `false` |
-| DEV | guess! :) | `false` |
+| DATA_DIR_PATH | the data directory of the project                                                                                                                                                        | `~/.ai-agents-az-video-generator` with npm, `/app/data` in the Docker images                         |
+| DOCKER        | whether the project is running in a Docker container                                                                                                                                     | `true` for the docker images, otherwise `false`                                                      |
+| DEV           | guess! :)                                                                                                                                                                                | `false`                                                                                              |
 
 # Configuration options
 
-| key | description | default |
-| --- | --- | --- |
-| paddingBack | The end screen, for how long the video should keep playing after the narration has finished (in milliseconds). | 0 |
-| music | The mood of the background music. Get the available options from the GET `/api/music-tags` endpoint. | random |
-| captionPosition | The position where the captions should be rendered. Possible options: `top`, `center`, `bottom`. Default value | `bottom` |
-| captionBackgroundColor | The background color of the active caption item. | `blue` |
-| voice | The Kokoro voice. | `af_heart` |
-| orientation | The video orientation. Possible options are `portrait` and `landscape` | `portrait` |
-| musicVolume | Set the volume of the background music. Possible options are `low` `medium` `high` and `muted` | `high` |
+| key                    | description                                                                                                    | default    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- | ---------- |
+| paddingBack            | The end screen, for how long the video should keep playing after the narration has finished (in milliseconds). | 0          |
+| music                  | The mood of the background music. Get the available options from the GET `/api/music-tags` endpoint.           | random     |
+| captionPosition        | The position where the captions should be rendered. Possible options: `top`, `center`, `bottom`. Default value | `bottom`   |
+| captionBackgroundColor | The background color of the active caption item.                                                               | `blue`     |
+| voice                  | The Kokoro voice.                                                                                              | `af_heart` |
+| orientation            | The video orientation. Possible options are `portrait` and `landscape`                                         | `portrait` |
+| musicVolume            | Set the volume of the background music. Possible options are `low` `medium` `high` and `muted`                 | `high`     |
 
 # Usage
 
@@ -427,11 +426,11 @@ Make sure all the necessary packages are installed.
 
 Setting up the MCP (or REST) server depends on how you run n8n and the server. Please follow the examples from the matrix below.
 
-|  | n8n is running locally, using `n8n start` | n8n is running locally using Docker | n8n is running in the cloud |
-| --- | --- | --- | --- |
-| `short-video-maker` is running in Docker, locally | `http://localhost:3123` | It depends. You can technically use `http://host.docker.internal:3123` as it points to the host, but you could configure to use the same network and use the service name to communicate like `http://short-video-maker:3123` | won’t work - deploy `short-video-maker` to the cloud |
-| `short-video-maker` is running with npm/npx | `http://localhost:3123` | `http://host.docker.internal:3123` | won’t work - deploy `short-video-maker` to the cloud |
-| `short-video-maker` is running in the cloud | You should use your IP address `http://{YOUR_IP}:3123` | You should use your IP address `http://{YOUR_IP}:3123` | You should use your IP address `http://{YOUR_IP}:3123` |
+|                                                   | n8n is running locally, using `n8n start`              | n8n is running locally using Docker                                                                                                                                                                                           | n8n is running in the cloud                            |
+| ------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `short-video-maker` is running in Docker, locally | `http://localhost:3123`                                | It depends. You can technically use `http://host.docker.internal:3123` as it points to the host, but you could configure to use the same network and use the service name to communicate like `http://short-video-maker:3123` | won’t work - deploy `short-video-maker` to the cloud   |
+| `short-video-maker` is running with npm/npx       | `http://localhost:3123`                                | `http://host.docker.internal:3123`                                                                                                                                                                                            | won’t work - deploy `short-video-maker` to the cloud   |
+| `short-video-maker` is running in the cloud       | You should use your IP address `http://{YOUR_IP}:3123` | You should use your IP address `http://{YOUR_IP}:3123`                                                                                                                                                                        | You should use your IP address `http://{YOUR_IP}:3123` |
 
 # Deploying to the cloud
 

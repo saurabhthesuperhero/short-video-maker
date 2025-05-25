@@ -11,6 +11,7 @@ const whisperVersion = "1.7.1";
 const defaultWhisperModel: whisperModels = "medium.en"; // possible options: "tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo"
 
 // Create the global logger
+const versionNumber = process.env.npm_package_version;
 export const logger = pino({
   level: process.env.LOG_LEVEL || defaultLogLevel,
   timestamp: pino.stdTimeFunctions.isoTime,
@@ -18,6 +19,10 @@ export const logger = pino({
     level: (label) => {
       return { level: label };
     },
+  },
+  base: {
+    pid: process.pid,
+    version: versionNumber,
   },
 });
 

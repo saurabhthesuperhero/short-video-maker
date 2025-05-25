@@ -36,7 +36,17 @@ export class PexelsAPI {
         signal: AbortSignal.timeout(timeout),
       },
     )
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error(
+              "Invalid Pexels API key - please make sure you get a valid key from https://www.pexels.com/api and set it in the environment variable PEXELS_API_KEY",
+            );
+          }
+          throw new Error(`Pexels API error: ${res.status} ${res.statusText}`);
+        }
+        return res.json();
+      })
       .catch((error: unknown) => {
         logger.error(error, "Error fetching videos from Pexels API");
         throw error;

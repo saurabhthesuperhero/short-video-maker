@@ -7,7 +7,7 @@ Content-Type: application/json
 {
     "scenes": [
       {
-        "text": "Hello world!",
+        "text": "hello world",
         "searchTerms": ["rain"]
       }
     ],
@@ -17,7 +17,7 @@ Content-Type: application/json
       "captionPosition": "center",
       "captionBackgroundColor": "#ff0000",
       "voice": "bm_lewis",
-      "orientation": "portrait",
+      "orientation": "landscape",
       "musicVolume": "muted"
     }
 }

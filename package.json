@@ -1,6 +1,6 @@
 {
   "name": "short-video-maker",
-  "version": "1.3.0",
+  "version": "1.3.4",
   "description": "Creates short videos for TikTok, Instagram Reels, and YouTube Shorts using the Model Context Protocol (MCP) and a REST API.",
   "main": "index.js",
   "bugs": "https://github.com/gyoridavid/short-video-maker/issues",
