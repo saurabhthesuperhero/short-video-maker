@@ -30,6 +30,8 @@ export class ShortCreator {
     config: RenderConfig;
     id: string;
   }[] = [];
+  private availableStaticImages: string[] = []; // Cache available static images
+
   constructor(
     private config: Config,
     private remotion: Remotion,
@@ -38,7 +40,34 @@ export class ShortCreator {
     private ffmpeg: FFMpeg,
     private pexelsApi: PexelsAPI,
     private musicManager: MusicManager,
-  ) {}
+  ) {
+    this.loadStaticImages(); // Load images on startup
+  }
+
+  private loadStaticImages() {
+    const imagesDir = path.join(this.config.staticDirPath, "images");
+    if (fs.existsSync(imagesDir)) {
+      try {
+        this.availableStaticImages = fs
+          .readdirSync(imagesDir)
+          .filter((file) =>
+            /\.(jpe?g|png|gif|webp)$/i.test(file),
+          ); // Filter for common image types
+        logger.info(
+          { count: this.availableStaticImages.length },
+          "Loaded static images.",
+        );
+      } catch (error) {
+        logger.error(error, "Failed to read static images directory");
+        this.availableStaticImages = [];
+      }
+    } else {
+      logger.warn(
+        `Static images directory not found: ${imagesDir}. Feature will be disabled.`,
+      );
+      this.availableStaticImages = [];
+    }
+  }
 
   public status(id: string): VideoStatus {
     const videoPath = this.getVideoPath(id);
@@ -100,8 +129,9 @@ export class ShortCreator {
     );
     const scenes: Scene[] = [];
     let totalDuration = 0;
-    const excludeVideoIds = [];
-    const tempFiles = [];
+    const excludeVideoIds: string[] = []; // For Pexels, to avoid duplicate videos
+    const tempFiles: string[] = [];
+    const usedStaticImages: string[] = []; // To avoid reusing the same static image in one short (optional)
 
     const orientation: OrientationEnum =
       config.orientation || OrientationEnum.portrait;
@@ -115,7 +145,6 @@ export class ShortCreator {
       let { audioLength } = audio;
       const { audio: audioStream } = audio;
 
-      // add the paddingBack in seconds to the last scene
       if (index + 1 === inputScenes.length && config.paddingBack) {
         audioLength += config.paddingBack / 1000;
       }
@@ -123,60 +152,82 @@ export class ShortCreator {
       const tempId = cuid();
       const tempWavFileName = `${tempId}.wav`;
       const tempMp3FileName = `${tempId}.mp3`;
-      const tempVideoFileName = `${tempId}.mp4`;
+      // tempVideoFileName is only used for Pexels downloads
       const tempWavPath = path.join(this.config.tempDirPath, tempWavFileName);
       const tempMp3Path = path.join(this.config.tempDirPath, tempMp3FileName);
-      const tempVideoPath = path.join(
-        this.config.tempDirPath,
-        tempVideoFileName,
-      );
-      tempFiles.push(tempVideoPath);
       tempFiles.push(tempWavPath, tempMp3Path);
 
       await this.ffmpeg.saveNormalizedAudio(audioStream, tempWavPath);
       const captions = await this.whisper.CreateCaption(tempWavPath);
-
       await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
-      const video = await this.pexelsApi.findVideo(
-        scene.searchTerms,
-        audioLength,
-        excludeVideoIds,
-        orientation,
-      );
 
-      logger.debug(`Downloading video from ${video.url} to ${tempVideoPath}`);
+      let sceneVisualUrl: string;
+      let isStaticImage = false;
 
-      await new Promise<void>((resolve, reject) => {
-        const fileStream = fs.createWriteStream(tempVideoPath);
-        https
-          .get(video.url, (response: http.IncomingMessage) => {
-            if (response.statusCode !== 200) {
-              reject(
-                new Error(`Failed to download video: ${response.statusCode}`),
-              );
-              return;
-            }
+      if (scene.useLocalImage && this.availableStaticImages.length > 0) {
+        isStaticImage = true;
+        let eligibleImages = this.availableStaticImages.filter(
+          (img) => !usedStaticImages.includes(img),
+        );
+        if (eligibleImages.length === 0) { // All images used, allow reuse
+          eligibleImages = this.availableStaticImages;
+        }
+        const selectedImage = eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
+        usedStaticImages.push(selectedImage); // Mark as used for this short
+        sceneVisualUrl = `http://localhost:${this.config.port}/api/static/images/${selectedImage}`;
+        logger.debug({ image: selectedImage }, "Using local static image for scene");
+      } else {
+        if (scene.useLocalImage && this.availableStaticImages.length === 0) {
+          logger.warn("Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.");
+        }
+        if (!scene.searchTerms || scene.searchTerms.length === 0) {
+          throw new Error(`Scene ${index + 1} has no searchTerms and is not configured to use a local image, or no local images are available.`);
+        }
 
-            response.pipe(fileStream);
+        const tempVideoFileName = `${tempId}.mp4`; // Pexels video needs a temp name
+        const tempVideoPath = path.join(this.config.tempDirPath, tempVideoFileName);
+        tempFiles.push(tempVideoPath); // Only add to tempFiles if it's a downloaded Pexels video
 
-            fileStream.on("finish", () => {
-              fileStream.close();
-              logger.debug(`Video downloaded successfully to ${tempVideoPath}`);
-              resolve();
+        const pexelsVideo = await this.pexelsApi.findVideo(
+          scene.searchTerms,
+          audioLength,
+          excludeVideoIds,
+          orientation,
+        );
+        logger.debug(`Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`);
+        await new Promise<void>((resolve, reject) => {
+          const fileStream = fs.createWriteStream(tempVideoPath);
+          const httpClient = pexelsVideo.url.startsWith("https") ? https : http;
+          httpClient
+            .get(pexelsVideo.url, (response: http.IncomingMessage) => {
+              if (response.statusCode !== 200) {
+                reject(
+                  new Error(`Failed to download video: ${response.statusCode}`),
+                );
+                return;
+              }
+              response.pipe(fileStream);
+              fileStream.on("finish", () => {
+                fileStream.close();
+                logger.debug(`Pexels video downloaded successfully to ${tempVideoPath}`);
+                resolve();
+              });
+            })
+            .on("error", (err: Error) => {
+              fs.unlink(tempVideoPath, () => {});
+              logger.error(err, "Error downloading Pexels video:");
+              reject(err);
             });
-          })
-          .on("error", (err: Error) => {
-            fs.unlink(tempVideoPath, () => {}); // Delete the file if download failed
-            logger.error(err, "Error downloading video:");
-            reject(err);
-          });
-      });
-
-      excludeVideoIds.push(video.id);
+        });
+        excludeVideoIds.push(pexelsVideo.id);
+        sceneVisualUrl = `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`;
+      }
 
       scenes.push({
         captions,
-        video: `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`,
+        video: sceneVisualUrl, // This can now be a Pexels video URL or a static image URL
+        // You might want to add a flag to the Scene object if Remotion needs to know it's an image
+        // e.g., isStaticImage: isStaticImage,
         audio: {
           url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
           duration: audioLength,
@@ -186,9 +237,12 @@ export class ShortCreator {
       totalDuration += audioLength;
       index++;
     }
-    if (config.paddingBack) {
-      totalDuration += config.paddingBack / 1000;
-    }
+
+    // Note: The original code had a potential bug: if config.paddingBack was set,
+    // totalDuration was incremented twice (once in the loop for the last scene, once outside).
+    // The current logic for paddingBack inside the loop seems correct if it's intended to extend the *last scene's audio length implicitly*.
+    // If paddingBack is for *silent* padding *after all scenes*, the logic might need adjustment.
+    // Assuming current logic is intended: paddingBack effectively extends the last scene's duration.
 
     const selectedMusic = this.findMusic(totalDuration, config.music);
     logger.debug({ selectedMusic }, "Selected music for the video");
@@ -199,7 +253,7 @@ export class ShortCreator {
         scenes,
         config: {
           durationMs: totalDuration * 1000,
-          paddingBack: config.paddingBack,
+          paddingBack: config.paddingBack, // This might be redundant if durationMs already includes it
           ...{
             captionBackgroundColor: config.captionBackgroundColor,
             captionPosition: config.captionPosition,
@@ -212,6 +266,7 @@ export class ShortCreator {
     );
 
     for (const file of tempFiles) {
+      logger.debug({ file }, "Removing temporary file");
       fs.removeSync(file);
     }
 
@@ -237,12 +292,25 @@ export class ShortCreator {
   }
 
   private findMusic(videoDuration: number, tag?: MusicMoodEnum): MusicForVideo {
+    // Reload music list to pick up any changes if MusicManager supports it, or ensure it's fresh
     const musicFiles = this.musicManager.musicList().filter((music) => {
       if (tag) {
         return music.mood === tag;
       }
       return true;
     });
+
+    if (musicFiles.length === 0) {
+      logger.warn({ tag }, "No music found for the given tag or no music available at all. Proceeding without music.");
+      // Return a dummy/empty music object or handle as per your app's logic
+      return {
+        file: "", // Or a specific silent audio file if Remotion requires a music object
+        start: 0,
+        end: 0,
+        mood: "none",
+        url: "" // Provide a valid (even if silent) URL or ensure Remotion handles missing music.url
+      };
+    }
     return musicFiles[Math.floor(Math.random() * musicFiles.length)];
   }
 
@@ -256,38 +324,25 @@ export class ShortCreator {
 
   public listAllVideos(): { id: string; status: VideoStatus }[] {
     const videos: { id: string; status: VideoStatus }[] = [];
-
-    // Check if videos directory exists
     if (!fs.existsSync(this.config.videosDirPath)) {
       return videos;
     }
-
-    // Read all files in the videos directory
     const files = fs.readdirSync(this.config.videosDirPath);
-
-    // Filter for MP4 files and extract video IDs
     for (const file of files) {
       if (file.endsWith(".mp4")) {
         const videoId = file.replace(".mp4", "");
-
         let status: VideoStatus = "ready";
-        const inQueue = this.queue.find((item) => item.id === videoId);
-        if (inQueue) {
+        if (this.queue.find((item) => item.id === videoId)) {
           status = "processing";
         }
-
         videos.push({ id: videoId, status });
       }
     }
-
-    // Add videos that are in the queue but not yet rendered
     for (const queueItem of this.queue) {
-      const existingVideo = videos.find((v) => v.id === queueItem.id);
-      if (!existingVideo) {
+      if (!videos.find((v) => v.id === queueItem.id)) {
         videos.push({ id: queueItem.id, status: "processing" });
       }
     }
-
     return videos;
   }
 

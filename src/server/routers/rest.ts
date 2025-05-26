@@ -10,6 +10,7 @@ import { validateCreateShortInput } from "../validator";
 import { ShortCreator } from "../../short-creator/ShortCreator";
 import { logger } from "../../logger";
 import { Config } from "../../config";
+import mime from "mime-types"; // For robust MIME type detection
 
 // todo abstract class
 export class APIRouter {
@@ -196,6 +197,40 @@ export class APIRouter {
     );
 
     this.router.get(
+      "/static/images/:filename",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        const { filename } = req.params;
+        if (!filename) {
+          return res.status(400).json({ error: "filename is required" });
+        }
+
+        // Basic security: prevent path traversal
+        if (filename.includes("..") || filename.includes("/")) {
+          return res.status(400).json({ error: "Invalid filename" });
+        }
+
+        const imagePath = path.join(this.config.staticDirPath, "images", filename);
+
+        if (!fs.existsSync(imagePath)) {
+          logger.warn({ imagePath }, "Static image not found for serving");
+          return res.status(404).json({ error: "Image not found" });
+        }
+
+        const mimeType = mime.lookup(imagePath) || 'application/octet-stream';
+        res.setHeader("Content-Type", mimeType);
+
+        const imageStream = fs.createReadStream(imagePath);
+        imageStream.on("error", (error) => {
+          logger.error(error, "Error reading static image file");
+          res.status(500).json({ error: "Error reading image file", filename });
+        });
+        imageStream.pipe(res);
+      },
+    );
+
+
+
+    this.router.get(
       "/short-video/:videoId",
       (req: ExpressRequest, res: ExpressResponse) => {
         try {
@@ -221,5 +256,7 @@ export class APIRouter {
         }
       },
     );
+
+
   }
 }

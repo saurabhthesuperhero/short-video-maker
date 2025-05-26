@@ -15,6 +15,40 @@ export enum MusicMoodEnum {
   funny = "funny/quirky",
 }
 
+export const sceneInput = z
+  .object({
+    text: z.string().describe("Text to be spoken in the video"),
+    searchTerms: z
+      .array(z.string())
+      .optional() // Keep it optional at the object level
+      .describe(
+        "Search term for video, 1 word, and at least 2-3 search terms should be provided for each scene. Make sure to match the overall context with the word - regardless what the video search result would be.",
+      ),
+    useLocalImage: z
+      .boolean()
+      .optional()
+      .describe(
+        "If true, a random image from the static/images folder will be used instead of a Pexels video. SearchTerms will be ignored.",
+      ),
+  })
+  .superRefine((data, ctx) => {
+    // If useLocalImage is true, searchTerms are not needed.
+    if (data.useLocalImage) {
+      // No action needed, searchTerms can be undefined or empty
+      return;
+    }
+
+    // If useLocalImage is false or undefined, searchTerms are required and must not be empty.
+    if (!data.searchTerms || data.searchTerms.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "searchTerms are required and cannot be empty when not using a local image.",
+        path: ["searchTerms"], // Path to the field causing the issue
+      });
+    }
+  });
+
+export type SceneInput = z.infer<typeof sceneInput>;
 export enum CaptionPositionEnum {
   top = "top",
   center = "center",
@@ -30,15 +64,15 @@ export type Scene = {
   };
 };
 
-export const sceneInput = z.object({
-  text: z.string().describe("Text to be spoken in the video"),
-  searchTerms: z
-    .array(z.string())
-    .describe(
-      "Search term for video, 1 word, and at least 2-3 search terms should be provided for each scene. Make sure to match the overall context with the word - regardless what the video search result would be.",
-    ),
-});
-export type SceneInput = z.infer<typeof sceneInput>;
+// export const sceneInput = z.object({
+//   text: z.string().describe("Text to be spoken in the video"),
+//   searchTerms: z
+//     .array(z.string())
+//     .describe(
+//       "Search term for video, 1 word, and at least 2-3 search terms should be provided for each scene. Make sure to match the overall context with the word - regardless what the video search result would be.",
+//     ),
+// });
+// export type SceneInput = z.infer<typeof sceneInput>;
 
 export enum VoiceEnum {
   af_heart = "af_heart",
