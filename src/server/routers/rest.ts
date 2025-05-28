@@ -209,7 +209,8 @@ export class APIRouter {
           return res.status(400).json({ error: "Invalid filename" });
         }
 
-        const imagePath = path.join(this.config.staticDirPath, "images", filename);
+        // const imagePath = path.join(this.config.staticDirPath, "images", filename);
+        const imagePath = path.join(this.config.staticDirPath, "stoic", filename);
 
         if (!fs.existsSync(imagePath)) {
           logger.warn({ imagePath }, "Static image not found for serving");

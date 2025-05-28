@@ -45,7 +45,8 @@ export class ShortCreator {
   }
 
   private loadStaticImages() {
-    const imagesDir = path.join(this.config.staticDirPath, "images");
+    // const imagesDir = path.join(this.config.staticDirPath, "images");
+    const imagesDir = path.join(this.config.staticDirPath, "stoic");
     if (fs.existsSync(imagesDir)) {
       try {
         this.availableStaticImages = fs
