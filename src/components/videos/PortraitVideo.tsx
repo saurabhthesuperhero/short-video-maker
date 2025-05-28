@@ -31,9 +31,11 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
   const { fps, width, height } = useVideoConfig();
 
   /* ---------- caption helpers ---------- */
-  const captionBg = config.captionBackgroundColor ?? "blue";
+  // ⇣ NEW default highlight colour
+  const captionBg = config.captionBackgroundColor ?? "#cda900"; // Stoic-gold
   const activeStyle: React.CSSProperties = {
     backgroundColor: captionBg,
+    color: "white",               // ⇣ High-contrast on yellow
     padding: "10px",
     marginLeft: "-10px",
     marginRight: "-10px",
@@ -93,7 +95,7 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
         let transform = "none";
 
         if (isStatic) {
-          /* Ken-Burns with scale overshoot */
+          /* Ken Burns with scale overshoot */
           const zoomStart = 1.1;            // overshoot
           const zoomMid   = 1.0;            // settle baseline
           const zoomEnd   = 1.15;           // slow push-in
