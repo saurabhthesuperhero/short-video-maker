@@ -6,7 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="8aefc44e-599c-4562-99c0-4e0dd99636b4" name="Changes" comment="working local images">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/short-creator/ShortCreator.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/short-creator/ShortCreator.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/videos/PortraitVideo.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/videos/PortraitVideo.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
