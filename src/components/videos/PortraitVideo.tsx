@@ -1,4 +1,5 @@
-// src/components/root/PortraitVideo.tsx
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import React from "react";
 import {
   AbsoluteFill,
   Sequence,
@@ -9,11 +10,9 @@ import {
   Img,
   interpolate,
   spring,
-  getInputProps,
 } from "remotion";
 import { z } from "zod";
 import { loadFont } from "@remotion/google-fonts/BarlowCondensed";
-
 import {
   calculateVolume,
   createCaptionPages,
@@ -22,28 +21,26 @@ import {
 
 const { fontFamily } = loadFont(); // "Barlow Condensed"
 
-export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
-                                                                            scenes,
-                                                                            music,
-                                                                            config,
-                                                                          }) => {
+export const PortraitVideo: React.FC<
+  z.infer<typeof shortVideoSchema>
+> = ({ scenes, music, config }) => {
   const globalFrame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 
+  /* cross-fade / overlap length */
+  const TRANSITION_FRAMES = Math.round(0.3 * fps);
+
   /* ---------- caption helpers ---------- */
-  // ⇣ NEW default highlight colour
-  const captionBg = config.captionBackgroundColor ?? "#cda900"; // Stoic-gold
+  const captionBg = config.captionBackgroundColor ?? "#cda900";
   const activeStyle: React.CSSProperties = {
     backgroundColor: captionBg,
-    color: "white",               // ⇣ High-contrast on yellow
+    color: "white",
     padding: "10px",
     marginLeft: "-10px",
     marginRight: "-10px",
     borderRadius: "10px",
   };
-
   const captionPosition = config.captionPosition ?? "center";
-
   const [musicVolume, musicMuted] = calculateVolume(config.musicVolume);
 
   /* ---------- scene build ---------- */
@@ -71,59 +68,93 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
           maxDistanceMs: 1000,
         });
 
-        const sceneStart = currentFrameOffset;
+        /* duration logic */
         let sceneFrames = Math.round(audio.duration * fps);
-
         if (config.paddingBack && sceneIdx === scenes.length - 1) {
           sceneFrames += Math.round((config.paddingBack / 1000) * fps);
         }
-        currentFrameOffset += sceneFrames;
 
-        /* ---------- per-scene animation ---------- */
-        const sceneFrame = globalFrame - sceneStart;
-        const fadeIn = Math.round(0.25 * fps);
-        const fadeOut = Math.round(0.25 * fps);
+        const sceneStart =
+          sceneIdx === 0
+            ? currentFrameOffset
+            : currentFrameOffset - TRANSITION_FRAMES;
 
-        const opacity = interpolate(
-          sceneFrame,
-          [0, fadeIn, sceneFrames - fadeOut, sceneFrames],
-          [0, 1, 1, 0],
-          { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-        );
+        currentFrameOffset =
+          sceneStart + sceneFrames - TRANSITION_FRAMES;
 
+        /* ---------- animation values ---------- */
+        const frame = globalFrame - sceneStart;
+        const fade = TRANSITION_FRAMES;
+
+        /* cross-fade opacity
+           first scene starts fully visible, later scenes fade in */
+        const opacity =
+          sceneIdx === 0
+            ? interpolate(
+              frame,
+              [sceneFrames - fade, sceneFrames],
+              [1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+            )
+            : interpolate(
+              frame,
+              [0, fade, sceneFrames - fade, sceneFrames],
+              [0, 1, 1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+            );
+
+        /* dir alternates per slide */
+        const dir = sceneIdx % 2 === 0 ? 1 : -1;
+
+        /* spring helpers */
+        const inSpring = spring({
+          fps,
+          frame: Math.max(0, frame),
+          durationInFrames: fade,
+          config: { damping: 200, mass: 1, stiffness: 120 },
+        });
+        const outSpring = spring({
+          fps,
+          frame: Math.max(0, frame - (sceneFrames - fade)),
+          durationInFrames: fade,
+          config: { damping: 200, mass: 1, stiffness: 90 },
+        });
+
+        /* viral POP + SPIRAL entry */
+        const popScale = interpolate(inSpring, [0, 0.3, 1], [0.8, 1.15, 1]);
+        const popRotate = interpolate(inSpring, [0, 1], [dir * -10, 0]);
+
+        /* exit zoom / rotate */
+        const scaleOut = interpolate(outSpring, [0, 1], [1, 1.25]);
+        const rotateOut = interpolate(outSpring, [0, 1], [0, dir * 10]);
+
+        /* vertical slide (enter + exit) */
+        const translateY =
+          interpolate(inSpring, [0, 1], [dir * 80, 0]) +
+          interpolate(outSpring, [0, 1], [0, -dir * 80]);
+
+        /* Ken-Burns base for stills */
         const isStatic = visualUrl.includes("/api/static/images/");
-        let transform = "none";
+        let transform = `translateY(${translateY}px) scale(${
+          popScale * scaleOut
+        }) rotate(${popRotate + rotateOut}deg)`;
 
         if (isStatic) {
-          /* Ken Burns with scale overshoot */
-          const zoomStart = 1.1;            // overshoot
-          const zoomMid   = 1.0;            // settle baseline
-          const zoomEnd   = 1.15;           // slow push-in
           const overshootFrames = Math.round(0.4 * fps);
-
-          const baseZoom =
-            sceneFrame < overshootFrames
-              ? interpolate(
-                sceneFrame,
-                [0, overshootFrames],
-                [zoomStart, zoomMid],
-                { extrapolateRight: "clamp" },
-              )
-              : interpolate(
-                sceneFrame,
-                [overshootFrames, sceneFrames],
-                [zoomMid, zoomEnd],
-                { extrapolateRight: "clamp" },
-              );
-
+          const zoom =
+            frame < overshootFrames
+              ? interpolate(frame, [0, overshootFrames], [1.1, 1.0])
+              : interpolate(frame, [overshootFrames, sceneFrames], [
+                1.0,
+                1.15,
+              ]);
           const panX =
-            ((sceneIdx % 2 === 0 ? 1 : -1) *
-              interpolate(sceneFrame, [0, sceneFrames], [0, width * 0.06])) |
+            (dir *
+              interpolate(frame, [0, sceneFrames], [0, width * 0.06])) |
             0;
           const panY =
-            interpolate(sceneFrame, [0, sceneFrames], [0, height * -0.04]) | 0;
-
-          transform = `translate(${panX}px, ${panY}px) scale(${baseZoom})`;
+            interpolate(frame, [0, sceneFrames], [0, height * -0.04]) | 0;
+          transform += ` translate(${panX}px, ${panY}px) scale(${zoom})`;
         }
 
         return (
@@ -132,10 +163,11 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
             from={sceneStart}
             durationInFrames={sceneFrames}
           >
-            {/* main visual layer */}
+            {/* visual layer */}
             <AbsoluteFill
               style={{
                 opacity,
+                transform,
                 overflow: "hidden",
               }}
             >
@@ -146,13 +178,15 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
                     width: "100%",
                     height: "100%",
                     objectFit: "cover",
-                    transform,
                   }}
                 />
               ) : (
-                <OffthreadVideo src={visualUrl} muted style={{ width: "100%", height: "100%" }} />
+                <OffthreadVideo
+                  src={visualUrl}
+                  muted
+                  style={{ width: "100%", height: "100%" }}
+                />
               )}
-              {/* dark overlay for cinematic depth */}
               <AbsoluteFill
                 style={{
                   background:
@@ -190,19 +224,14 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
                       padding: "0 20px",
                     }}
                   >
-                    <div
-                      style={{
-                        width: "90%",
-                        textAlign: "center",
-                      }}
-                    >
-                      {page.lines.map((line, lineIdx) => (
+                    <div style={{ width: "90%", textAlign: "center" }}>
+                      {page.lines.map((line, lIdx) => (
                         <p
-                          key={`line-${lineIdx}`}
+                          key={`line-${lIdx}`}
                           style={{
                             fontSize: "5em",
                             fontFamily,
-                            fontWeight: "900",
+                            fontWeight: 900,
                             color: "white",
                             WebkitTextStroke: "2px black",
                             textShadow: "0 0 10px black",
@@ -211,7 +240,7 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
                             lineHeight: 1.1,
                           }}
                         >
-                          {line.texts.map((txt, txtIdx) => {
+                          {line.texts.map((txt, tIdx) => {
                             const relStart = Math.round(
                               (txt.startMs / 1000) * fps,
                             );
@@ -219,15 +248,12 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
                               (txt.endMs / 1000) * fps,
                             );
                             const localFrame = globalFrame - sceneStart;
-
                             const isActive =
-                              localFrame >= relStart &&
-                              localFrame <= relEnd;
+                              localFrame >= relStart && localFrame <= relEnd;
 
                             return (
-                              <>
+                              <React.Fragment key={`txt-${tIdx}`}>
                                 <span
-                                  key={`text-${txtIdx}`}
                                   style={{
                                     fontWeight: "bold",
                                     display: "inline-block",
@@ -236,8 +262,8 @@ export const PortraitVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
                                 >
                                   {txt.text}
                                 </span>
-                                {txtIdx < line.texts.length - 1 ? " " : ""}
-                              </>
+                                {tIdx < line.texts.length - 1 ? " " : ""}
+                              </React.Fragment>
                             );
                           })}
                         </p>
