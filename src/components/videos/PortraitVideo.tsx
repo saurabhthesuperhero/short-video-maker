@@ -73,14 +73,17 @@ export const PortraitVideo: React.FC<
         if (config.paddingBack && sceneIdx === scenes.length - 1) {
           sceneFrames += Math.round((config.paddingBack / 1000) * fps);
         }
+        const isLastScene = sceneIdx === scenes.length - 1;
 
         const sceneStart =
           sceneIdx === 0
             ? currentFrameOffset
             : currentFrameOffset - TRANSITION_FRAMES;
 
-        currentFrameOffset =
-          sceneStart + sceneFrames - TRANSITION_FRAMES;
+        currentFrameOffset = isLastScene
+          ? sceneStart + sceneFrames            // ⬅️ keep full length for last scene
+          : sceneStart + sceneFrames - TRANSITION_FRAMES;
+
 
         /* ---------- animation values ---------- */
         const frame = globalFrame - sceneStart;
@@ -88,18 +91,33 @@ export const PortraitVideo: React.FC<
 
         /* cross-fade opacity
            first scene starts fully visible, later scenes fade in */
+        // const opacity =
+        //   sceneIdx === 0
+        //     ? interpolate(
+        //       frame,
+        //       [sceneFrames - fade, sceneFrames],
+        //       [1, 0],
+        //       { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+        //     )
+        //     : interpolate(
+        //       frame,
+        //       [0, fade, sceneFrames - fade, sceneFrames],
+        //       [0, 1, 1, 0],
+        //       { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+        //     );
+
         const opacity =
           sceneIdx === 0
             ? interpolate(
               frame,
               [sceneFrames - fade, sceneFrames],
-              [1, 0],
+              [1, isLastScene ? 1 : 0],      // first scene never fades to black
               { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
             )
             : interpolate(
               frame,
               [0, fade, sceneFrames - fade, sceneFrames],
-              [0, 1, 1, 0],
+              [0, 1, 1, isLastScene ? 1 : 0], // last scene stays visible
               { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
             );
 
@@ -113,20 +131,44 @@ export const PortraitVideo: React.FC<
           durationInFrames: fade,
           config: { damping: 200, mass: 1, stiffness: 120 },
         });
-        const outSpring = spring({
+        // const outSpring = spring({
+        //   fps,
+        //   frame: Math.max(0, frame - (sceneFrames - fade)),
+        //   durationInFrames: fade,
+        //   config: { damping: 200, mass: 1, stiffness: 90 },
+        // });
+
+        const outSpringRaw = spring({
           fps,
           frame: Math.max(0, frame - (sceneFrames - fade)),
           durationInFrames: fade,
           config: { damping: 200, mass: 1, stiffness: 90 },
         });
+        const outSpring = isLastScene ? 0 : outSpringRaw;
+        const finalOpacity = isLastScene
+          ? 1
+          : interpolate(
+            frame,
+            [0, fade, sceneFrames - fade, sceneFrames],
+            [0, 1, 1, 0],
+            { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+          );
+
 
         /* viral POP + SPIRAL entry */
         const popScale = interpolate(inSpring, [0, 0.3, 1], [0.8, 1.15, 1]);
         const popRotate = interpolate(inSpring, [0, 1], [dir * -10, 0]);
 
-        /* exit zoom / rotate */
-        const scaleOut = interpolate(outSpring, [0, 1], [1, 1.25]);
-        const rotateOut = interpolate(outSpring, [0, 1], [0, dir * 10]);
+        // /* exit zoom / rotate */
+        // const scaleOut = interpolate(outSpring, [0, 1], [1, 1.25]);
+        // const rotateOut = interpolate(outSpring, [0, 1], [0, dir * 10]);
+        const scaleOut = isLastScene
+          ? 1
+          : interpolate(outSpring, [0, 1], [1, 1.25]);
+
+        const rotateOut = isLastScene
+          ? 0
+          : interpolate(outSpring, [0, 1], [0, dir * 10]);
 
         /* vertical slide (enter + exit) */
         const translateY =
@@ -166,7 +208,7 @@ export const PortraitVideo: React.FC<
             {/* visual layer */}
             <AbsoluteFill
               style={{
-                opacity,
+                opacity: finalOpacity,
                 transform,
                 overflow: "hidden",
               }}

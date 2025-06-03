@@ -14,6 +14,10 @@ import { PexelsAPI } from "./libraries/Pexels";
 import { Config } from "../config";
 import { logger } from "../logger";
 import { MusicManager } from "./music";
+
+const CROSS_FADE_SECONDS = 0.3;
+const TRIM_SECONDS = 3; // 🔥 NEW: seconds trimmed off the tail of every render
+
 import type {
   SceneInput,
   RenderConfig,
@@ -51,9 +55,7 @@ export class ShortCreator {
       try {
         this.availableStaticImages = fs
           .readdirSync(imagesDir)
-          .filter((file) =>
-            /\.(jpe?g|png|gif|webp)$/i.test(file),
-          ); // Filter for common image types
+          .filter((file) => /\.(jpe?g|png|gif|webp)$/i.test(file)); // Filter for common image types
         logger.info(
           { count: this.availableStaticImages.length },
           "Loaded static images.",
@@ -105,6 +107,7 @@ export class ShortCreator {
       { sceneInput, config, id },
       "Processing video item in the queue",
     );
+
     try {
       await this.createShort(id, sceneInput, config);
       logger.debug({ id }, "Video created successfully");
@@ -128,6 +131,7 @@ export class ShortCreator {
       },
       "Creating short video",
     );
+
     const scenes: Scene[] = [];
     let totalDuration = 0;
     const excludeVideoIds: string[] = []; // For Pexels, to avoid duplicate videos
@@ -163,31 +167,40 @@ export class ShortCreator {
       await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
 
       let sceneVisualUrl: string;
-      let isStaticImage = false;
 
       if (scene.useLocalImage && this.availableStaticImages.length > 0) {
-        isStaticImage = true;
         let eligibleImages = this.availableStaticImages.filter(
           (img) => !usedStaticImages.includes(img),
         );
-        if (eligibleImages.length === 0) { // All images used, allow reuse
+        if (eligibleImages.length === 0) {
           eligibleImages = this.availableStaticImages;
         }
-        const selectedImage = eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
-        usedStaticImages.push(selectedImage); // Mark as used for this short
+        const selectedImage =
+          eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
+        usedStaticImages.push(selectedImage);
         sceneVisualUrl = `http://localhost:${this.config.port}/api/static/images/${selectedImage}`;
-        logger.debug({ image: selectedImage }, "Using local static image for scene");
+        logger.debug(
+          { image: selectedImage },
+          "Using local static image for scene",
+        );
       } else {
         if (scene.useLocalImage && this.availableStaticImages.length === 0) {
-          logger.warn("Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.");
+          logger.warn(
+            "Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.",
+          );
         }
         if (!scene.searchTerms || scene.searchTerms.length === 0) {
-          throw new Error(`Scene ${index + 1} has no searchTerms and is not configured to use a local image, or no local images are available.`);
+          throw new Error(
+            `Scene ${index + 1} has no searchTerms and is not configured to use a local image, or no local images are available.`,
+          );
         }
 
         const tempVideoFileName = `${tempId}.mp4`; // Pexels video needs a temp name
-        const tempVideoPath = path.join(this.config.tempDirPath, tempVideoFileName);
-        tempFiles.push(tempVideoPath); // Only add to tempFiles if it's a downloaded Pexels video
+        const tempVideoPath = path.join(
+          this.config.tempDirPath,
+          tempVideoFileName,
+        );
+        tempFiles.push(tempVideoPath);
 
         const pexelsVideo = await this.pexelsApi.findVideo(
           scene.searchTerms,
@@ -195,22 +208,30 @@ export class ShortCreator {
           excludeVideoIds,
           orientation,
         );
-        logger.debug(`Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`);
+        logger.debug(
+          `Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`,
+        );
         await new Promise<void>((resolve, reject) => {
           const fileStream = fs.createWriteStream(tempVideoPath);
-          const httpClient = pexelsVideo.url.startsWith("https") ? https : http;
+          const httpClient = pexelsVideo.url.startsWith("https")
+            ? https
+            : http;
           httpClient
             .get(pexelsVideo.url, (response: http.IncomingMessage) => {
               if (response.statusCode !== 200) {
                 reject(
-                  new Error(`Failed to download video: ${response.statusCode}`),
+                  new Error(
+                    `Failed to download video: ${response.statusCode}`,
+                  ),
                 );
                 return;
               }
               response.pipe(fileStream);
               fileStream.on("finish", () => {
                 fileStream.close();
-                logger.debug(`Pexels video downloaded successfully to ${tempVideoPath}`);
+                logger.debug(
+                  `Pexels video downloaded successfully to ${tempVideoPath}`,
+                );
                 resolve();
               });
             })
@@ -226,9 +247,7 @@ export class ShortCreator {
 
       scenes.push({
         captions,
-        video: sceneVisualUrl, // This can now be a Pexels video URL or a static image URL
-        // You might want to add a flag to the Scene object if Remotion needs to know it's an image
-        // e.g., isStaticImage: isStaticImage,
+        video: sceneVisualUrl,
         audio: {
           url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
           duration: audioLength,
@@ -239,13 +258,16 @@ export class ShortCreator {
       index++;
     }
 
-    // Note: The original code had a potential bug: if config.paddingBack was set,
-    // totalDuration was incremented twice (once in the loop for the last scene, once outside).
-    // The current logic for paddingBack inside the loop seems correct if it's intended to extend the *last scene's audio length implicitly*.
-    // If paddingBack is for *silent* padding *after all scenes*, the logic might need adjustment.
-    // Assuming current logic is intended: paddingBack effectively extends the last scene's duration.
+    // ─── adjust for cross-fade overlaps ───
+    const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
+    const effectiveDuration = totalDuration - overlap;
 
-    const selectedMusic = this.findMusic(totalDuration, config.music);
+    /* 🔥 NEW: subtract TRIM_SECONDS so the rendered video is exactly
+       3 seconds shorter (black tail removed) */
+    const finalDuration = Math.max(0, effectiveDuration - TRIM_SECONDS);
+
+    // Use trimmed duration when picking music too
+    const selectedMusic = this.findMusic(finalDuration, config.music);
     logger.debug({ selectedMusic }, "Selected music for the video");
 
     await this.remotion.render(
@@ -253,12 +275,10 @@ export class ShortCreator {
         music: selectedMusic,
         scenes,
         config: {
-          durationMs: totalDuration * 1000,
-          paddingBack: config.paddingBack, // This might be redundant if durationMs already includes it
-          ...{
-            captionBackgroundColor: config.captionBackgroundColor,
-            captionPosition: config.captionPosition,
-          },
+          durationMs: finalDuration * 1000,
+          paddingBack: config.paddingBack, // kept for completeness
+          captionBackgroundColor: config.captionBackgroundColor,
+          captionPosition: config.captionPosition,
           musicVolume: config.musicVolume,
         },
       },
@@ -293,7 +313,6 @@ export class ShortCreator {
   }
 
   private findMusic(videoDuration: number, tag?: MusicMoodEnum): MusicForVideo {
-    // Reload music list to pick up any changes if MusicManager supports it, or ensure it's fresh
     const musicFiles = this.musicManager.musicList().filter((music) => {
       if (tag) {
         return music.mood === tag;
@@ -302,14 +321,16 @@ export class ShortCreator {
     });
 
     if (musicFiles.length === 0) {
-      logger.warn({ tag }, "No music found for the given tag or no music available at all. Proceeding without music.");
-      // Return a dummy/empty music object or handle as per your app's logic
+      logger.warn(
+        { tag },
+        "No music found for the given tag or no music available at all. Proceeding without music.",
+      );
       return {
-        file: "", // Or a specific silent audio file if Remotion requires a music object
+        file: "",
         start: 0,
         end: 0,
         mood: "none",
-        url: "" // Provide a valid (even if silent) URL or ensure Remotion handles missing music.url
+        url: "",
       };
     }
     return musicFiles[Math.floor(Math.random() * musicFiles.length)];
