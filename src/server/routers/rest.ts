@@ -196,6 +196,36 @@ export class APIRouter {
       },
     );
 
+    // <<< NEW ROUTE TO SERVE YOUR AUDIO FILES
+    this.router.get(
+      "/audio/:fileName",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        const { fileName } = req.params;
+        if (!fileName) {
+          return res.status(400).json({ error: "fileName is required" });
+        }
+        // Basic security: prevent path traversal
+        if (fileName.includes("..") || fileName.includes("/")) {
+          return res.status(400).json({ error: "Invalid filename" });
+        }
+
+        const audioFilePath = path.join(this.config.audioDirPath, fileName);
+        if (!fs.existsSync(audioFilePath)) {
+          logger.warn({ audioFilePath }, "Audio file not found for serving");
+          return res.status(404).json({ error: "Audio file not found" });
+        }
+        const mimeType = mime.lookup(audioFilePath) || 'application/octet-stream';
+        res.setHeader("Content-Type", mimeType);
+
+        const audioStream = fs.createReadStream(audioFilePath);
+        audioStream.on("error", (error) => {
+          logger.error(error, "Error reading audio file");
+          res.status(500).json({ error: "Error reading audio file", fileName });
+        });
+        audioStream.pipe(res);
+      },
+    );
+
     this.router.get(
       "/static/images/:filename",
       (req: ExpressRequest, res: ExpressResponse) => {

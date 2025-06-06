@@ -1,4 +1,4 @@
-import ffmpeg from "fluent-ffmpeg";
+import ffmpeg, { FfprobeData } from "fluent-ffmpeg";
 import { Readable } from "node:stream";
 import { logger } from "../../logger";
 
@@ -8,6 +8,24 @@ export class FFMpeg {
       ffmpeg.setFfmpegPath(ffmpegInstaller.path);
       logger.info("FFmpeg path set to:", ffmpegInstaller.path);
       return new FFMpeg();
+    });
+  }
+
+  async getAudioDuration(filePath: string): Promise<number> {
+    logger.debug({ file: filePath }, "Getting audio duration with ffprobe");
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(filePath, (err: Error, metadata: FfprobeData) => {
+        if (err) {
+          logger.error(err, "Error probing audio file");
+          return reject(err);
+        }
+        const duration = metadata.format.duration;
+        if (duration === undefined) {
+          return reject(new Error("Could not determine audio duration from metadata."));
+        }
+        logger.debug({ duration }, "Got audio duration");
+        resolve(duration);
+      });
     });
   }
 

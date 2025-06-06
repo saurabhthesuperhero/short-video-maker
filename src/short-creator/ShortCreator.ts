@@ -1,4 +1,3 @@
-import { OrientationEnum } from "./../types/shorts";
 /* eslint-disable @remotion/deterministic-randomness */
 import fs from "fs-extra";
 import cuid from "cuid";
@@ -16,7 +15,7 @@ import { logger } from "../logger";
 import { MusicManager } from "./music";
 
 const CROSS_FADE_SECONDS = 0.3;
-const TRIM_SECONDS = 3; // 🔥 NEW: seconds trimmed off the tail of every render
+const TRIM_SECONDS = 3;
 
 import type {
   SceneInput,
@@ -27,6 +26,7 @@ import type {
   MusicTag,
   MusicForVideo,
 } from "../types/shorts";
+import { OrientationEnum } from "../types/shorts";
 
 export class ShortCreator {
   private queue: {
@@ -34,7 +34,7 @@ export class ShortCreator {
     config: RenderConfig;
     id: string;
   }[] = [];
-  private availableStaticImages: string[] = []; // Cache available static images
+  private availableStaticImages: string[] = [];
 
   constructor(
     private config: Config,
@@ -45,17 +45,16 @@ export class ShortCreator {
     private pexelsApi: PexelsAPI,
     private musicManager: MusicManager,
   ) {
-    this.loadStaticImages(); // Load images on startup
+    this.loadStaticImages();
   }
 
   private loadStaticImages() {
-    // const imagesDir = path.join(this.config.staticDirPath, "images");
     const imagesDir = path.join(this.config.staticDirPath, "stoic");
     if (fs.existsSync(imagesDir)) {
       try {
         this.availableStaticImages = fs
           .readdirSync(imagesDir)
-          .filter((file) => /\.(jpe?g|png|gif|webp)$/i.test(file)); // Filter for common image types
+          .filter((file) => /\.(jpe?g|png|gif|webp)$/i.test(file));
         logger.info(
           { count: this.availableStaticImages.length },
           "Loaded static images.",
@@ -84,7 +83,6 @@ export class ShortCreator {
   }
 
   public addToQueue(sceneInput: SceneInput[], config: RenderConfig): string {
-    // todo add mutex lock
     const id = cuid();
     this.queue.push({
       sceneInput,
@@ -98,7 +96,6 @@ export class ShortCreator {
   }
 
   private async processQueue(): Promise<void> {
-    // todo add a semaphore
     if (this.queue.length === 0) {
       return;
     }
@@ -124,149 +121,102 @@ export class ShortCreator {
     inputScenes: SceneInput[],
     config: RenderConfig,
   ): Promise<string> {
-    logger.debug(
-      {
-        inputScenes,
-        config,
-      },
-      "Creating short video",
-    );
+    logger.debug({ inputScenes, config }, "Creating short video");
 
-    const scenes: Scene[] = [];
-    let totalDuration = 0;
-    const excludeVideoIds: string[] = []; // For Pexels, to avoid duplicate videos
+    const orientation: OrientationEnum = config.orientation || OrientationEnum.portrait;
+    const excludeVideoIds: string[] = [];
     const tempFiles: string[] = [];
-    const usedStaticImages: string[] = []; // To avoid reusing the same static image in one short (optional)
 
-    const orientation: OrientationEnum =
-      config.orientation || OrientationEnum.portrait;
+    let scenes: Scene[] = [];
+    let finalDuration = 0;
 
-    let index = 0;
-    for (const scene of inputScenes) {
-      const audio = await this.kokoro.generate(
-        scene.text,
-        config.voice ?? "af_heart",
-      );
-      let { audioLength } = audio;
-      const { audio: audioStream } = audio;
-
-      if (index + 1 === inputScenes.length && config.paddingBack) {
-        audioLength += config.paddingBack / 1000;
+    if (config.audioFile) {
+      logger.info({ audioFile: config.audioFile }, "Starting audio-first workflow");
+      const audioFilePath = path.join(this.config.audioDirPath, config.audioFile);
+      if (!fs.existsSync(audioFilePath)) {
+        throw new Error(`Audio file not found: ${audioFilePath}`);
       }
 
-      const tempId = cuid();
-      const tempWavFileName = `${tempId}.wav`;
-      const tempMp3FileName = `${tempId}.mp3`;
-      // tempVideoFileName is only used for Pexels downloads
-      const tempWavPath = path.join(this.config.tempDirPath, tempWavFileName);
-      const tempMp3Path = path.join(this.config.tempDirPath, tempMp3FileName);
-      tempFiles.push(tempWavPath, tempMp3Path);
+      const audioDuration = await this.ffmpeg.getAudioDuration(audioFilePath);
+      const allCaptions = await this.whisper.CreateCaption(audioFilePath);
 
-      await this.ffmpeg.saveNormalizedAudio(audioStream, tempWavPath);
-      const captions = await this.whisper.CreateCaption(tempWavPath);
-      await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
+      // =========================================================================
+      // THE FINAL FIX: The total video duration MUST include the padding.
+      // This was the cause of the captions being cut off.
+      // =========================================================================
+      finalDuration = audioDuration + (config.paddingBack ?? 0) / 1000;
 
-      let sceneVisualUrl: string;
+      const numVisuals = inputScenes.length;
+      if (numVisuals === 0) {
+        throw new Error("Cannot create video with a master audio file and zero scenes for visuals.");
+      }
+      // The duration of each visual scene must be based on the NEW total duration.
+      const durationPerScene = finalDuration / numVisuals;
 
-      if (scene.useLocalImage && this.availableStaticImages.length > 0) {
-        let eligibleImages = this.availableStaticImages.filter(
-          (img) => !usedStaticImages.includes(img),
-        );
-        if (eligibleImages.length === 0) {
-          eligibleImages = this.availableStaticImages;
-        }
-        const selectedImage =
-          eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
-        usedStaticImages.push(selectedImage);
-        sceneVisualUrl = `http://localhost:${this.config.port}/api/static/images/${selectedImage}`;
-        logger.debug(
-          { image: selectedImage },
-          "Using local static image for scene",
-        );
-      } else {
-        if (scene.useLocalImage && this.availableStaticImages.length === 0) {
-          logger.warn(
-            "Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.",
-          );
-        }
-        if (!scene.searchTerms || scene.searchTerms.length === 0) {
-          throw new Error(
-            `Scene ${index + 1} has no searchTerms and is not configured to use a local image, or no local images are available.`,
-          );
-        }
+      const usedStaticImages: string[] = [];
+      for (let i = 0; i < numVisuals; i++) {
+        const sceneInput = inputScenes[i];
+        const sceneVisualUrl = await this.getVisualForScene(sceneInput, durationPerScene, excludeVideoIds, usedStaticImages, orientation, tempFiles);
 
-        const tempVideoFileName = `${tempId}.mp4`; // Pexels video needs a temp name
-        const tempVideoPath = path.join(
-          this.config.tempDirPath,
-          tempVideoFileName,
-        );
-        tempFiles.push(tempVideoPath);
-
-        const pexelsVideo = await this.pexelsApi.findVideo(
-          scene.searchTerms,
-          audioLength,
-          excludeVideoIds,
-          orientation,
-        );
-        logger.debug(
-          `Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`,
-        );
-        await new Promise<void>((resolve, reject) => {
-          const fileStream = fs.createWriteStream(tempVideoPath);
-          const httpClient = pexelsVideo.url.startsWith("https")
-            ? https
-            : http;
-          httpClient
-            .get(pexelsVideo.url, (response: http.IncomingMessage) => {
-              if (response.statusCode !== 200) {
-                reject(
-                  new Error(
-                    `Failed to download video: ${response.statusCode}`,
-                  ),
-                );
-                return;
-              }
-              response.pipe(fileStream);
-              fileStream.on("finish", () => {
-                fileStream.close();
-                logger.debug(
-                  `Pexels video downloaded successfully to ${tempVideoPath}`,
-                );
-                resolve();
-              });
-            })
-            .on("error", (err: Error) => {
-              fs.unlink(tempVideoPath, () => {});
-              logger.error(err, "Error downloading Pexels video:");
-              reject(err);
-            });
+        scenes.push({
+          video: sceneVisualUrl,
+          audio: {
+            url: i === 0 ? `http://localhost:${this.config.port}/api/audio/${config.audioFile}` : "",
+            duration: durationPerScene,
+          },
+          captions: i === 0 ? allCaptions : [],
         });
-        excludeVideoIds.push(pexelsVideo.id);
-        sceneVisualUrl = `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`;
+      }
+    } else {
+      // This is the original, working TTS workflow. It remains unchanged.
+      logger.info("Starting text-to-speech workflow");
+      let totalDuration = 0;
+      const usedStaticImages: string[] = [];
+
+      let index = 0;
+      for (const scene of inputScenes) {
+        if (!scene.text) {
+          throw new Error(`Scene ${index + 1} is missing text for TTS workflow.`);
+        }
+        const audio = await this.kokoro.generate(scene.text, config.voice ?? "af_heart");
+        let { audioLength } = audio;
+        const { audio: audioStream } = audio;
+
+        if (index + 1 === inputScenes.length && config.paddingBack) {
+          audioLength += config.paddingBack / 1000;
+        }
+
+        const tempId = cuid();
+        const tempWavFileName = `${tempId}.wav`;
+        const tempMp3FileName = `${tempId}.mp3`;
+        const tempWavPath = path.join(this.config.tempDirPath, tempWavFileName);
+        const tempMp3Path = path.join(this.config.tempDirPath, tempMp3FileName);
+        tempFiles.push(tempWavPath, tempMp3Path);
+
+        await this.ffmpeg.saveNormalizedAudio(audioStream, tempWavPath);
+        const captions = await this.whisper.CreateCaption(tempWavPath);
+        await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
+
+        const sceneVisualUrl = await this.getVisualForScene(scene, audioLength, excludeVideoIds, usedStaticImages, orientation, tempFiles);
+
+        scenes.push({
+          captions,
+          video: sceneVisualUrl,
+          audio: {
+            url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
+            duration: audioLength,
+          },
+        });
+
+        totalDuration += audioLength;
+        index++;
       }
 
-      scenes.push({
-        captions,
-        video: sceneVisualUrl,
-        audio: {
-          url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
-          duration: audioLength,
-        },
-      });
-
-      totalDuration += audioLength;
-      index++;
+      const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
+      const effectiveDuration = totalDuration - overlap;
+      finalDuration = Math.max(0, effectiveDuration - TRIM_SECONDS);
     }
 
-    // ─── adjust for cross-fade overlaps ───
-    const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
-    const effectiveDuration = totalDuration - overlap;
-
-    /* 🔥 NEW: subtract TRIM_SECONDS so the rendered video is exactly
-       3 seconds shorter (black tail removed) */
-    const finalDuration = Math.max(0, effectiveDuration - TRIM_SECONDS);
-
-    // Use trimmed duration when picking music too
     const selectedMusic = this.findMusic(finalDuration, config.music);
     logger.debug({ selectedMusic }, "Selected music for the video");
 
@@ -276,7 +226,7 @@ export class ShortCreator {
         scenes,
         config: {
           durationMs: finalDuration * 1000,
-          paddingBack: config.paddingBack, // kept for completeness
+          paddingBack: config.paddingBack,
           captionBackgroundColor: config.captionBackgroundColor,
           captionPosition: config.captionPosition,
           musicVolume: config.musicVolume,
@@ -292,6 +242,81 @@ export class ShortCreator {
     }
 
     return videoId;
+  }
+
+  private async getVisualForScene(
+    scene: SceneInput,
+    duration: number,
+    excludeVideoIds: string[],
+    usedStaticImages: string[],
+    orientation: OrientationEnum,
+    tempFiles: string[]
+  ): Promise<string> {
+    if (scene.useLocalImage && this.availableStaticImages.length > 0) {
+      let eligibleImages = this.availableStaticImages.filter(
+        (img) => !usedStaticImages.includes(img),
+      );
+      if (eligibleImages.length === 0) {
+        eligibleImages = this.availableStaticImages;
+      }
+      const selectedImage =
+        eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
+      usedStaticImages.push(selectedImage);
+      logger.debug(
+        { image: selectedImage },
+        "Using local static image for scene",
+      );
+      return `http://localhost:${this.config.port}/api/static/images/${selectedImage}`;
+    } else {
+      if (scene.useLocalImage && this.availableStaticImages.length === 0) {
+        logger.warn(
+          "Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.",
+        );
+      }
+      if (!scene.searchTerms || scene.searchTerms.length === 0) {
+        throw new Error(
+          `Scene has no searchTerms and is not configured to use a local image, or no local images are available.`,
+        );
+      }
+
+      const tempId = cuid();
+      const tempVideoFileName = `${tempId}.mp4`;
+      const tempVideoPath = path.join(this.config.tempDirPath, tempVideoFileName);
+      tempFiles.push(tempVideoPath);
+
+      const pexelsVideo = await this.pexelsApi.findVideo(scene.searchTerms, duration, excludeVideoIds, orientation);
+      excludeVideoIds.push(pexelsVideo.id);
+
+      logger.debug(`Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`);
+      await this.downloadFile(pexelsVideo.url, tempVideoPath);
+
+      return `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`;
+    }
+  }
+
+  private async downloadFile(url: string, dest: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const fileStream = fs.createWriteStream(dest);
+      const httpClient = url.startsWith("https") ? https : http;
+      httpClient
+        .get(url, (response: http.IncomingMessage) => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+            return;
+          }
+          response.pipe(fileStream);
+          fileStream.on("finish", () => {
+            fileStream.close();
+            logger.debug(`File downloaded successfully to ${dest}`);
+            resolve();
+          });
+        })
+        .on("error", (err: Error) => {
+          fs.unlink(dest, () => {});
+          logger.error(err, "Error downloading file:");
+          reject(err);
+        });
+    });
   }
 
   public getVideoPath(videoId: string): string {
@@ -329,7 +354,7 @@ export class ShortCreator {
         file: "",
         start: 0,
         end: 0,
-        mood: "none",
+        mood: "none" as MusicMoodEnum,
         url: "",
       };
     }

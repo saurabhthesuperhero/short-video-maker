@@ -17,7 +17,7 @@ export enum MusicMoodEnum {
 
 export const sceneInput = z
   .object({
-    text: z.string().describe("Text to be spoken in the video"),
+    text: z.string().optional().describe("Text to be spoken in the video. Required if a global audioFile is not provided in the config."),
     searchTerms: z
       .array(z.string())
       .optional() // Keep it optional at the object level
@@ -48,6 +48,7 @@ export const sceneInput = z
     }
   });
 
+
 export type SceneInput = z.infer<typeof sceneInput>;
 export enum CaptionPositionEnum {
   top = "top",
@@ -63,16 +64,6 @@ export type Scene = {
     duration: number;
   };
 };
-
-// export const sceneInput = z.object({
-//   text: z.string().describe("Text to be spoken in the video"),
-//   searchTerms: z
-//     .array(z.string())
-//     .describe(
-//       "Search term for video, 1 word, and at least 2-3 search terms should be provided for each scene. Make sure to match the overall context with the word - regardless what the video search result would be.",
-//     ),
-// });
-// export type SceneInput = z.infer<typeof sceneInput>;
 
 export enum VoiceEnum {
   af_heart = "af_heart",
@@ -150,6 +141,10 @@ export const renderConfig = z.object({
     .nativeEnum(MusicVolumeEnum)
     .optional()
     .describe("Volume of the music, default is high"),
+  audioFile: z
+    .string()
+    .optional()
+    .describe("Name of a pre-recorded audio file in the static/audio folder to use instead of generating audio from text."),
 });
 export type RenderConfig = z.infer<typeof renderConfig>;
 
@@ -179,6 +174,19 @@ export type CaptionPage = {
 export const createShortInput = z.object({
   scenes: z.array(sceneInput).describe("Each scene to be created"),
   config: renderConfig.describe("Configuration for rendering the video"),
+}).superRefine((data, ctx) => {
+  if (!data.config.audioFile) {
+    // If no audioFile, text is required for each scene for TTS.
+    data.scenes.forEach((scene, index) => {
+      if (!scene.text || scene.text.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Scene text is required for text-to-speech when 'audioFile' is not provided.",
+          path: ["scenes", index, "text"],
+        });
+      }
+    });
+  }
 });
 export type CreateShortInput = z.infer<typeof createShortInput>;
 
