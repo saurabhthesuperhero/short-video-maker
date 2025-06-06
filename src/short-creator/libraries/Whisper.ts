@@ -48,6 +48,7 @@ export class Whisper {
     logger.debug({ audioPath }, "Starting to transcribe audio");
     const { transcription } = await transcribe({
       model: this.config.whisperModel,
+      language: "en",
       whisperPath: this.config.whisperInstallPath,
       modelFolder: path.join(this.config.whisperInstallPath, "models"),
       whisperCppVersion: this.config.whisperVersion,
