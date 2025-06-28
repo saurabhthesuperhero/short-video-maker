@@ -16,6 +16,7 @@ import { MusicManager } from "./music";
 
 const CROSS_FADE_SECONDS = 0.3;
 const TRIM_SECONDS = 3;
+const IMAGE_DURATION_SECONDS = 4; // Each image will be displayed for this approximate duration
 
 import type {
   SceneInput,
@@ -49,7 +50,8 @@ export class ShortCreator {
   }
 
   private loadStaticImages() {
-    const imagesDir = path.join(this.config.staticDirPath, "stoic");
+    // Make sure this path is correct for your setup
+    const imagesDir = path.join(this.config.staticDirPath, "stoichorizontal");
     if (fs.existsSync(imagesDir)) {
       try {
         this.availableStaticImages = fs
@@ -123,16 +125,23 @@ export class ShortCreator {
   ): Promise<string> {
     logger.debug({ inputScenes, config }, "Creating short video");
 
-    const orientation: OrientationEnum = config.orientation || OrientationEnum.portrait;
+    const orientation: OrientationEnum =
+      config.orientation || OrientationEnum.portrait;
     const excludeVideoIds: string[] = [];
     const tempFiles: string[] = [];
 
-    let scenes: Scene[] = [];
+    const scenes: Scene[] = [];
     let finalDuration = 0;
 
     if (config.audioFile) {
-      logger.info({ audioFile: config.audioFile }, "Starting audio-first workflow");
-      const audioFilePath = path.join(this.config.audioDirPath, config.audioFile);
+      logger.info(
+        { audioFile: config.audioFile },
+        "Starting audio-first workflow",
+      );
+      const audioFilePath = path.join(
+        this.config.audioDirPath,
+        config.audioFile,
+      );
       if (!fs.existsSync(audioFilePath)) {
         throw new Error(`Audio file not found: ${audioFilePath}`);
       }
@@ -140,30 +149,47 @@ export class ShortCreator {
       const audioDuration = await this.ffmpeg.getAudioDuration(audioFilePath);
       const allCaptions = await this.whisper.CreateCaption(audioFilePath);
 
-      // =========================================================================
-      // THE FINAL FIX: The total video duration MUST include the padding.
-      // This was the cause of the captions being cut off.
-      // =========================================================================
       finalDuration = audioDuration + (config.paddingBack ?? 0) / 1000;
 
-      const numVisuals = inputScenes.length;
+      // NEW LOGIC: Calculate number of visuals based on audio duration
+      const numVisuals = Math.ceil(audioDuration / IMAGE_DURATION_SECONDS);
       if (numVisuals === 0) {
-        throw new Error("Cannot create video with a master audio file and zero scenes for visuals.");
+        throw new Error(
+          "Cannot create video, audio duration is zero or negative.",
+        );
       }
-      // The duration of each visual scene must be based on the NEW total duration.
-      const durationPerScene = finalDuration / numVisuals;
+
+      if (inputScenes.length === 0) {
+        throw new Error(
+          "The 'scenes' array cannot be empty for audio-first workflow.",
+        );
+      }
+
+      const sceneConfig = inputScenes[0]; // Use the first scene as a template for all visuals
+      const durationPerScene = finalDuration / numVisuals; // Distribute time evenly
 
       const usedStaticImages: string[] = [];
       for (let i = 0; i < numVisuals; i++) {
-        const sceneInput = inputScenes[i];
-        const sceneVisualUrl = await this.getVisualForScene(sceneInput, durationPerScene, excludeVideoIds, usedStaticImages, orientation, tempFiles);
+        const sceneVisualUrl = await this.getVisualForScene(
+          sceneConfig,
+          durationPerScene,
+          excludeVideoIds,
+          usedStaticImages,
+          orientation,
+          tempFiles,
+        );
 
         scenes.push({
           video: sceneVisualUrl,
           audio: {
-            url: i === 0 ? `http://localhost:${this.config.port}/api/audio/${config.audioFile}` : "",
+            // IMPORTANT: Only attach the master audio URL to the very first scene
+            url:
+              i === 0
+                ? `http://localhost:${this.config.port}/api/audio/${config.audioFile}`
+                : "",
             duration: durationPerScene,
           },
+          // IMPORTANT: Attach all captions to the first scene as well
           captions: i === 0 ? allCaptions : [],
         });
       }
@@ -176,9 +202,14 @@ export class ShortCreator {
       let index = 0;
       for (const scene of inputScenes) {
         if (!scene.text) {
-          throw new Error(`Scene ${index + 1} is missing text for TTS workflow.`);
+          throw new Error(
+            `Scene ${index + 1} is missing text for TTS workflow.`,
+          );
         }
-        const audio = await this.kokoro.generate(scene.text, config.voice ?? "af_heart");
+        const audio = await this.kokoro.generate(
+          scene.text,
+          config.voice ?? "af_heart",
+        );
         let { audioLength } = audio;
         const { audio: audioStream } = audio;
 
@@ -197,7 +228,14 @@ export class ShortCreator {
         const captions = await this.whisper.CreateCaption(tempWavPath);
         await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
 
-        const sceneVisualUrl = await this.getVisualForScene(scene, audioLength, excludeVideoIds, usedStaticImages, orientation, tempFiles);
+        const sceneVisualUrl = await this.getVisualForScene(
+          scene,
+          audioLength,
+          excludeVideoIds,
+          usedStaticImages,
+          orientation,
+          tempFiles,
+        );
 
         scenes.push({
           captions,
@@ -212,7 +250,8 @@ export class ShortCreator {
         index++;
       }
 
-      const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
+      const overlap =
+        Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
       const effectiveDuration = totalDuration - overlap;
       finalDuration = Math.max(0, effectiveDuration - TRIM_SECONDS);
     }
@@ -250,14 +289,16 @@ export class ShortCreator {
     excludeVideoIds: string[],
     usedStaticImages: string[],
     orientation: OrientationEnum,
-    tempFiles: string[]
+    tempFiles: string[],
   ): Promise<string> {
     if (scene.useLocalImage && this.availableStaticImages.length > 0) {
       let eligibleImages = this.availableStaticImages.filter(
         (img) => !usedStaticImages.includes(img),
       );
       if (eligibleImages.length === 0) {
+        // If all images have been used, reset and allow reuse
         eligibleImages = this.availableStaticImages;
+        usedStaticImages.length = 0;
       }
       const selectedImage =
         eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
@@ -281,13 +322,23 @@ export class ShortCreator {
 
       const tempId = cuid();
       const tempVideoFileName = `${tempId}.mp4`;
-      const tempVideoPath = path.join(this.config.tempDirPath, tempVideoFileName);
+      const tempVideoPath = path.join(
+        this.config.tempDirPath,
+        tempVideoFileName,
+      );
       tempFiles.push(tempVideoPath);
 
-      const pexelsVideo = await this.pexelsApi.findVideo(scene.searchTerms, duration, excludeVideoIds, orientation);
+      const pexelsVideo = await this.pexelsApi.findVideo(
+        scene.searchTerms,
+        duration,
+        excludeVideoIds,
+        orientation,
+      );
       excludeVideoIds.push(pexelsVideo.id);
 
-      logger.debug(`Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`);
+      logger.debug(
+        `Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`,
+      );
       await this.downloadFile(pexelsVideo.url, tempVideoPath);
 
       return `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`;
@@ -301,7 +352,11 @@ export class ShortCreator {
       httpClient
         .get(url, (response: http.IncomingMessage) => {
           if (response.statusCode !== 200) {
-            reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+            reject(
+              new Error(
+                `Failed to download file: ${response.statusCode} ${response.statusMessage}`,
+              ),
+            );
             return;
           }
           response.pipe(fileStream);
@@ -337,7 +392,10 @@ export class ShortCreator {
     return fs.readFileSync(videoPath);
   }
 
-  private findMusic(videoDuration: number, tag?: MusicMoodEnum): MusicForVideo {
+  private findMusic(
+    videoDuration: number,
+    tag?: MusicMoodEnum,
+  ): MusicForVideo {
     const musicFiles = this.musicManager.musicList().filter((music) => {
       if (tag) {
         return music.mood === tag;

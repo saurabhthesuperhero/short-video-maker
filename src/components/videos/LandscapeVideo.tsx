@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import React from "react";
 import {
   AbsoluteFill,
   Sequence,
@@ -5,10 +7,12 @@ import {
   useVideoConfig,
   Audio,
   OffthreadVideo,
+  Img,
+  interpolate,
+  spring,
 } from "remotion";
 import { z } from "zod";
 import { loadFont } from "@remotion/google-fonts/BarlowCondensed";
-
 import {
   calculateVolume,
   createCaptionPages,
@@ -18,140 +22,198 @@ import {
 const { fontFamily } = loadFont(); // "Barlow Condensed"
 
 export const LandscapeVideo: React.FC<z.infer<typeof shortVideoSchema>> = ({
-  scenes,
-  music,
-  config,
-}) => {
-  const frame = useCurrentFrame();
+                                                                             scenes,
+                                                                             music,
+                                                                             config,
+                                                                           }) => {
+  const globalFrame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const captionBackgroundColor = config.captionBackgroundColor ?? "blue";
-
-  const activeStyle = {
-    backgroundColor: captionBackgroundColor,
-    padding: "10px",
-    marginLeft: "-10px",
-    marginRight: "-10px",
+  const captionBg = config.captionBackgroundColor ?? "#cda900";
+  const activeStyle: React.CSSProperties = {
+    backgroundColor: captionBg,
+    color: "white",
+    padding: "10px 15px",
+    marginLeft: "-15px",
+    marginRight: "-15px",
     borderRadius: "10px",
+    display: "inline-block",
   };
-
   const captionPosition = config.captionPosition ?? "center";
-  let captionStyle = {};
-  if (captionPosition === "top") {
-    captionStyle = { top: 100 };
-  }
-  if (captionPosition === "center") {
-    captionStyle = { top: "50%", transform: "translateY(-50%)" };
-  }
-  if (captionPosition === "bottom") {
-    captionStyle = { bottom: 100 };
-  }
-
   const [musicVolume, musicMuted] = calculateVolume(config.musicVolume);
 
+  // Get ALL captions from ALL scenes into one master list.
+  const allCaptions = scenes.flatMap((s) => s.captions);
+  const captionPages = createCaptionPages({
+    captions: allCaptions,
+    lineMaxLength: 40, // Increased for landscape
+    lineCount: 2,
+    maxDistanceMs: 1000,
+  });
+
+  // Find the one voice-over audio track.
+  const voiceOverAudio = scenes.find((s) => s.audio.url)?.audio;
+
   return (
-    <AbsoluteFill style={{ backgroundColor: "white" }}>
-      <Audio
-        loop
-        src={music.url}
-        startFrom={music.start * fps}
-        endAt={music.end * fps}
-        volume={() => musicVolume}
-        muted={musicMuted}
-      />
+    <AbsoluteFill style={{ backgroundColor: "black" }}>
+      {/* Layer 1: Background Music */}
+      {music?.url && (
+        <Audio
+          loop
+          src={music.url}
+          startFrom={music.start * fps}
+          endAt={music.end * fps}
+          volume={() => musicVolume}
+          muted={musicMuted}
+        />
+      )}
 
-      {scenes.map((scene, i) => {
-        const { captions, audio, video } = scene;
-        const pages = createCaptionPages({
-          captions,
-          lineMaxLength: 30,
-          lineCount: 1,
-          maxDistanceMs: 1000,
-        });
+      {/* Layer 2: Voice-over Audio (plays once, continuously) */}
+      {voiceOverAudio?.url && <Audio src={voiceOverAudio.url} />}
 
-        // Calculate the start and end time of the scene
-        const startFrame =
-          scenes.slice(0, i).reduce((acc, curr) => {
-            return acc + curr.audio.duration;
-          }, 0) * fps;
-        let durationInFrames =
-          scenes.slice(0, i + 1).reduce((acc, curr) => {
-            return acc + curr.audio.duration;
-          }, 0) * fps;
-        if (config.paddingBack && i === scenes.length - 1) {
-          durationInFrames += (config.paddingBack / 1000) * fps;
+      {/* Layer 3: Visuals */}
+      {scenes.map((scene, sceneIdx) => {
+        const { audio, video: visualUrl } = scene;
+        const TRANSITION_FRAMES = Math.round(0.3 * fps);
+
+        // Correctly calculate start time by summing durations of all previous scenes
+        const sceneStart = scenes
+          .slice(0, sceneIdx)
+          .reduce((acc, s) => acc + Math.round(s.audio.duration * fps), 0);
+        let sceneFrames = Math.round(audio.duration * fps);
+
+        if (config.paddingBack && sceneIdx === scenes.length - 1) {
+          sceneFrames += Math.round((config.paddingBack / 1000) * fps);
+        }
+
+        const frame = globalFrame - sceneStart;
+        const isLastScene = sceneIdx === scenes.length - 1;
+
+        const opacity = interpolate(
+          frame,
+          [0, TRANSITION_FRAMES, sceneFrames - TRANSITION_FRAMES, sceneFrames],
+          [0, 1, 1, isLastScene ? 1 : 0],
+          { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+        );
+
+        // Animation logic for Ken Burns effect on static images
+        const isStatic = !visualUrl.endsWith(".mp4");
+        let transform = "";
+        if (isStatic) {
+          const zoomDirection = sceneIdx % 2 === 0 ? 1.0 : 1.15;
+          const panDirection = sceneIdx % 4; // 0: left, 1: right, 2: up, 3: down
+          const zoom = interpolate(
+            frame,
+            [0, sceneFrames],
+            [zoomDirection, 1.15 / zoomDirection],
+          );
+          const xPan = panDirection === 0 ? -5 : panDirection === 1 ? 5 : 0;
+          const yPan = panDirection === 2 ? -5 : panDirection === 3 ? 5 : 0;
+          const translateX = interpolate(frame, [0, sceneFrames], [0, xPan]);
+          const translateY = interpolate(frame, [0, sceneFrames], [0, yPan]);
+          transform = `scale(${zoom}) translateX(${translateX}%) translateY(${translateY}%)`;
         }
 
         return (
+          // Each visual is in its own sequence, timed correctly.
           <Sequence
-            from={startFrame}
-            durationInFrames={durationInFrames}
-            key={`scene-${i}`}
+            key={`scene-${sceneIdx}`}
+            from={sceneStart}
+            durationInFrames={Math.max(1, sceneFrames)}
           >
-            <OffthreadVideo src={video} muted />
-            <Audio src={audio.url} />
-            {pages.map((page, j) => {
-              return (
-                <Sequence
-                  key={`scene-${i}-page-${j}`}
-                  from={Math.round((page.startMs / 1000) * fps)}
-                  durationInFrames={Math.round(
-                    ((page.endMs - page.startMs) / 1000) * fps,
-                  )}
-                >
-                  <div
+            <AbsoluteFill style={{ opacity, overflow: "hidden" }}>
+              {isStatic ? (
+                <Img
+                  src={visualUrl}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    transform,
+                  }}
+                />
+              ) : (
+                <OffthreadVideo
+                  src={visualUrl}
+                  muted
+                  style={{ width: "100%", height: "100%" }}
+                />
+              )}
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
+      {/* Layer 4: Captions */}
+      {captionPages.map((page, pageIdx) => {
+        const pageStart = Math.round((page.startMs / 1000) * fps);
+        const pageFrames = Math.max(
+          1,
+          Math.round(((page.endMs - page.startMs) / 1000) * fps),
+        );
+        return (
+          <Sequence
+            key={`caption-page-${pageIdx}`}
+            from={pageStart}
+            durationInFrames={pageFrames}
+          >
+            <AbsoluteFill
+              style={{
+                display: "flex",
+                alignItems:
+                  captionPosition === "top"
+                    ? "flex-start"
+                    : captionPosition === "bottom"
+                      ? "flex-end"
+                      : "center",
+                justifyContent: "center",
+                padding: "0 40px",
+              }}
+            >
+              <div style={{ width: "90%", textAlign: "center" }}>
+                {page.lines.map((line, lIdx) => (
+                  <p
+                    key={`line-${lIdx}`}
                     style={{
-                      position: "absolute",
-                      left: 0,
-                      width: "100%",
-                      ...captionStyle,
+                      fontSize: "6em",
+                      fontFamily,
+                      fontWeight: 900,
+                      color: "white",
+                      WebkitTextStroke: "2px black",
+                      textShadow: "0 0 15px black",
+                      textTransform: "uppercase",
+                      margin: "0.2em 0",
+                      lineHeight: 1.1,
                     }}
                   >
-                    {page.lines.map((line, k) => {
+                    {line.texts.map((txt, tIdx) => {
+                      const captionStartFrame = Math.round(
+                        (txt.startMs / 1000) * fps,
+                      );
+                      const captionEndFrame = Math.round(
+                        (txt.endMs / 1000) * fps,
+                      );
+                      const isActive =
+                        globalFrame >= captionStartFrame &&
+                        globalFrame <= captionEndFrame;
                       return (
-                        <p
-                          style={{
-                            fontSize: "8em",
-                            fontFamily: fontFamily,
-                            fontWeight: "black",
-                            color: "white",
-                            WebkitTextStroke: "2px black",
-                            WebkitTextFillColor: "white",
-                            textShadow: "0px 0px 10px black",
-                            textAlign: "center",
-                            width: "100%",
-                            // uppercase
-                            textTransform: "uppercase",
-                          }}
-                          key={`scene-${i}-page-${j}-line-${k}`}
-                        >
-                          {line.texts.map((text, l) => {
-                            const active =
-                              frame >=
-                                startFrame + (text.startMs / 1000) * fps &&
-                              frame <= startFrame + (text.endMs / 1000) * fps;
-                            return (
-                              <>
-                                <span
-                                  style={{
-                                    fontWeight: "bold",
-                                    ...(active ? activeStyle : {}),
-                                  }}
-                                  key={`scene-${i}-page-${j}-line-${k}-text-${l}`}
-                                >
-                                  {text.text}
-                                </span>
-                                {l < line.texts.length - 1 ? " " : ""}
-                              </>
-                            );
-                          })}
-                        </p>
+                        <React.Fragment key={`txt-${tIdx}`}>
+                          <span
+                            style={{
+                              fontWeight: "bold",
+                              ...(isActive ? activeStyle : {}),
+                            }}
+                          >
+                            {txt.text}
+                          </span>
+                          {tIdx < line.texts.length - 1 ? " " : ""}
+                        </React.Fragment>
                       );
                     })}
-                  </div>
-                </Sequence>
-              );
-            })}
+                  </p>
+                ))}
+              </div>
+            </AbsoluteFill>
           </Sequence>
         );
       })}

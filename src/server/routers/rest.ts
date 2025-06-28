@@ -12,7 +12,6 @@ import { logger } from "../../logger";
 import { Config } from "../../config";
 import mime from "mime-types"; // For robust MIME type detection
 
-// todo abstract class
 export class APIRouter {
   public router: express.Router;
   private shortCreator: ShortCreator;
@@ -145,15 +144,8 @@ export class APIRouter {
           return;
         }
 
-        if (tmpFile.endsWith(".mp3")) {
-          res.setHeader("Content-Type", "audio/mpeg");
-        }
-        if (tmpFile.endsWith(".wav")) {
-          res.setHeader("Content-Type", "audio/wav");
-        }
-        if (tmpFile.endsWith(".mp4")) {
-          res.setHeader("Content-Type", "video/mp4");
-        }
+        const mimeType = mime.lookup(tmpFilePath) || 'application/octet-stream';
+        res.setHeader("Content-Type", mimeType);
 
         const tmpFileStream = fs.createReadStream(tmpFilePath);
         tmpFileStream.on("error", (error) => {
@@ -196,7 +188,6 @@ export class APIRouter {
       },
     );
 
-    // <<< NEW ROUTE TO SERVE YOUR AUDIO FILES
     this.router.get(
       "/audio/:fileName",
       (req: ExpressRequest, res: ExpressResponse) => {
@@ -204,7 +195,6 @@ export class APIRouter {
         if (!fileName) {
           return res.status(400).json({ error: "fileName is required" });
         }
-        // Basic security: prevent path traversal
         if (fileName.includes("..") || fileName.includes("/")) {
           return res.status(400).json({ error: "Invalid filename" });
         }
@@ -214,7 +204,8 @@ export class APIRouter {
           logger.warn({ audioFilePath }, "Audio file not found for serving");
           return res.status(404).json({ error: "Audio file not found" });
         }
-        const mimeType = mime.lookup(audioFilePath) || 'application/octet-stream';
+        const mimeType =
+          mime.lookup(audioFilePath) || "application/octet-stream";
         res.setHeader("Content-Type", mimeType);
 
         const audioStream = fs.createReadStream(audioFilePath);
@@ -234,20 +225,23 @@ export class APIRouter {
           return res.status(400).json({ error: "filename is required" });
         }
 
-        // Basic security: prevent path traversal
         if (filename.includes("..") || filename.includes("/")) {
           return res.status(400).json({ error: "Invalid filename" });
         }
 
-        // const imagePath = path.join(this.config.staticDirPath, "images", filename);
-        const imagePath = path.join(this.config.staticDirPath, "stoic", filename);
+        // CORRECTED PATH: Points to the 'stoichorizontal' directory now
+        const imagePath = path.join(
+          this.config.staticDirPath,
+          "stoichorizontal",
+          filename,
+        );
 
         if (!fs.existsSync(imagePath)) {
           logger.warn({ imagePath }, "Static image not found for serving");
           return res.status(404).json({ error: "Image not found" });
         }
 
-        const mimeType = mime.lookup(imagePath) || 'application/octet-stream';
+        const mimeType = mime.lookup(imagePath) || "application/octet-stream";
         res.setHeader("Content-Type", mimeType);
 
         const imageStream = fs.createReadStream(imagePath);
@@ -258,9 +252,6 @@ export class APIRouter {
         imageStream.pipe(res);
       },
     );
-
-
-
 
     this.router.get(
       "/short-video/:videoId",
@@ -288,7 +279,5 @@ export class APIRouter {
         }
       },
     );
-
-
   }
 }
