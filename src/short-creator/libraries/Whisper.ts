@@ -48,7 +48,7 @@ export class Whisper {
 
     const whisperResult = await transcribe({
       model: this.config.whisperModel,
-      language: "hi",
+      language: "en",
       whisperPath: this.config.whisperInstallPath,
       modelFolder: path.join(this.config.whisperInstallPath, "models"),
       whisperCppVersion: this.config.whisperVersion,

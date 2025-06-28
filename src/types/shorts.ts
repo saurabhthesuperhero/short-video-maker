@@ -145,6 +145,13 @@ export const renderConfig = z.object({
     .string()
     .optional()
     .describe("Name of a pre-recorded audio file in the static/audio folder to use instead of generating audio from text."),
+
+  staticImageSec: z
+    .number()
+    .optional()
+    .describe(
+      "When using a pre-recorded audioFile, this sets how many seconds each randomly chosen static image should be displayed. Default is 4.",
+    ),
 });
 export type RenderConfig = z.infer<typeof renderConfig>;
 

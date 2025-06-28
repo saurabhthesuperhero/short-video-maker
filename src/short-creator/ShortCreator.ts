@@ -16,6 +16,7 @@ import { MusicManager } from "./music";
 
 const CROSS_FADE_SECONDS = 0.3;
 const TRIM_SECONDS = 3;
+const DEFAULT_STATIC_DURATION_SEC = 4;
 
 import type {
   SceneInput,
@@ -34,7 +35,11 @@ export class ShortCreator {
     config: RenderConfig;
     id: string;
   }[] = [];
-  private availableStaticImages: string[] = [];
+
+  private availableStaticImages: Record<OrientationEnum, string[]> = {
+    portrait: [],
+    landscape: [],
+  };
 
   constructor(
     private config: Config,
@@ -48,162 +53,192 @@ export class ShortCreator {
     this.loadStaticImages();
   }
 
+  // ────────────────────────────────────────────
+  // STATIC IMAGE UTILS
+  // ────────────────────────────────────────────
   private loadStaticImages() {
-    const imagesDir = path.join(this.config.staticDirPath, "stoic");
-    if (fs.existsSync(imagesDir)) {
+    const portraitDir = path.join(this.config.staticDirPath, "stoic");
+    const landscapeDir = path.join(
+      this.config.staticDirPath,
+      "stoichorizontal",
+    );
+
+    const readDir = (dir: string): string[] => {
+      if (!fs.existsSync(dir)) return [];
       try {
-        this.availableStaticImages = fs
-          .readdirSync(imagesDir)
-          .filter((file) => /\.(jpe?g|png|gif|webp)$/i.test(file));
-        logger.info(
-          { count: this.availableStaticImages.length },
-          "Loaded static images.",
-        );
-      } catch (error) {
-        logger.error(error, "Failed to read static images directory");
-        this.availableStaticImages = [];
+        return fs
+          .readdirSync(dir)
+          .filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f));
+      } catch (err) {
+        logger.error(err, "Failed reading static image directory");
+        return [];
       }
-    } else {
-      logger.warn(
-        `Static images directory not found: ${imagesDir}. Feature will be disabled.`,
-      );
-      this.availableStaticImages = [];
-    }
+    };
+
+    this.availableStaticImages.portrait = readDir(portraitDir);
+    this.availableStaticImages.landscape = readDir(landscapeDir);
+
+    logger.info(
+      {
+        portrait: this.availableStaticImages.portrait.length,
+        landscape: this.availableStaticImages.landscape.length,
+      },
+      "Static images loaded",
+    );
   }
 
+  private pickRandomStaticImage(
+    orientation: OrientationEnum,
+    alreadyUsed: string[],
+  ): string | null {
+    const pool = this.availableStaticImages[orientation].filter(
+      (img) => !alreadyUsed.includes(img),
+    );
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // ────────────────────────────────────────────
+  // QUEUE UTILS
+  // ────────────────────────────────────────────
   public status(id: string): VideoStatus {
     const videoPath = this.getVideoPath(id);
-    if (this.queue.find((item) => item.id === id)) {
-      return "processing";
-    }
-    if (fs.existsSync(videoPath)) {
-      return "ready";
-    }
+    if (this.queue.find((q) => q.id === id)) return "processing";
+    if (fs.existsSync(videoPath)) return "ready";
     return "failed";
   }
 
   public addToQueue(sceneInput: SceneInput[], config: RenderConfig): string {
     const id = cuid();
-    this.queue.push({
-      sceneInput,
-      config,
-      id,
-    });
-    if (this.queue.length === 1) {
-      this.processQueue();
-    }
+    this.queue.push({ sceneInput, config, id });
+    if (this.queue.length === 1) void this.processQueue();
     return id;
   }
 
   private async processQueue(): Promise<void> {
-    if (this.queue.length === 0) {
-      return;
-    }
+    if (this.queue.length === 0) return;
     const { sceneInput, config, id } = this.queue[0];
-    logger.debug(
-      { sceneInput, config, id },
-      "Processing video item in the queue",
-    );
-
     try {
       await this.createShort(id, sceneInput, config);
-      logger.debug({ id }, "Video created successfully");
-    } catch (error: unknown) {
-      logger.error(error, "Error creating video");
+      logger.info({ id }, "Video rendered");
+    } catch (err) {
+      logger.error(err, "Render failed");
     } finally {
       this.queue.shift();
-      this.processQueue();
+      void this.processQueue();
     }
   }
 
+  // ────────────────────────────────────────────
+  // MAIN: CREATE VIDEO
+  // ────────────────────────────────────────────
   private async createShort(
     videoId: string,
     inputScenes: SceneInput[],
     config: RenderConfig,
   ): Promise<string> {
-    logger.debug({ inputScenes, config }, "Creating short video");
-
-    const orientation: OrientationEnum = config.orientation || OrientationEnum.portrait;
+    const orientation: OrientationEnum =
+      config.orientation ?? OrientationEnum.portrait;
     const excludeVideoIds: string[] = [];
     const tempFiles: string[] = [];
 
-    let scenes: Scene[] = [];
-    let finalDuration = 0;
+    const scenes: Scene[] = [];
+    let finalDurationSec = 0;
 
+    // ─── AUDIO-FIRST WORKFLOW ──────────────────────
     if (config.audioFile) {
-      logger.info({ audioFile: config.audioFile }, "Starting audio-first workflow");
-      const audioFilePath = path.join(this.config.audioDirPath, config.audioFile);
-      if (!fs.existsSync(audioFilePath)) {
-        throw new Error(`Audio file not found: ${audioFilePath}`);
-      }
+      const audioPath = path.join(this.config.audioDirPath, config.audioFile);
+      if (!fs.existsSync(audioPath))
+        throw new Error(`Audio file not found: ${audioPath}`);
 
-      const audioDuration = await this.ffmpeg.getAudioDuration(audioFilePath);
-      const allCaptions = await this.whisper.CreateCaption(audioFilePath);
+      const audioDuration = await this.ffmpeg.getAudioDuration(audioPath);
+      const captions = await this.whisper.CreateCaption(audioPath);
 
-      // =========================================================================
-      // THE FINAL FIX: The total video duration MUST include the padding.
-      // This was the cause of the captions being cut off.
-      // =========================================================================
-      finalDuration = audioDuration + (config.paddingBack ?? 0) / 1000;
+      finalDurationSec =
+        audioDuration + (config.paddingBack ?? 0) / 1000;
 
-      const numVisuals = inputScenes.length;
-      if (numVisuals === 0) {
-        throw new Error("Cannot create video with a master audio file and zero scenes for visuals.");
-      }
-      // The duration of each visual scene must be based on the NEW total duration.
-      const durationPerScene = finalDuration / numVisuals;
+      const staticImageSec =
+        config.staticImageSec ?? DEFAULT_STATIC_DURATION_SEC;
 
-      const usedStaticImages: string[] = [];
-      for (let i = 0; i < numVisuals; i++) {
-        const sceneInput = inputScenes[i];
-        const sceneVisualUrl = await this.getVisualForScene(sceneInput, durationPerScene, excludeVideoIds, usedStaticImages, orientation, tempFiles);
+      const requiredSceneCount = Math.ceil(
+        finalDurationSec / staticImageSec,
+      );
+
+      const usedImages: string[] = [];
+      for (let i = 0; i < requiredSceneCount; i++) {
+        const image = this.pickRandomStaticImage(orientation, usedImages);
+        if (!image)
+          throw new Error(
+            `No static images found for orientation ${orientation}`,
+          );
+        usedImages.push(image);
+
+        const duration =
+          i === requiredSceneCount - 1
+            ? finalDurationSec - staticImageSec * (requiredSceneCount - 1)
+            : staticImageSec;
 
         scenes.push({
-          video: sceneVisualUrl,
+          video: `http://localhost:${this.config.port}/api/static/images/${image}`,
           audio: {
-            url: i === 0 ? `http://localhost:${this.config.port}/api/audio/${config.audioFile}` : "",
-            duration: durationPerScene,
+            url:
+              i === 0
+                ? `http://localhost:${this.config.port}/api/audio/${config.audioFile}`
+                : "",
+            duration,
           },
-          captions: i === 0 ? allCaptions : [],
+          captions: i === 0 ? captions : [],
         });
       }
-    } else {
-      // This is the original, working TTS workflow. It remains unchanged.
-      logger.info("Starting text-to-speech workflow");
+    }
+
+    // ─── TTS WORKFLOW (unchanged) ───────────────────
+    else {
       let totalDuration = 0;
       const usedStaticImages: string[] = [];
 
       let index = 0;
       for (const scene of inputScenes) {
-        if (!scene.text) {
-          throw new Error(`Scene ${index + 1} is missing text for TTS workflow.`);
-        }
-        const audio = await this.kokoro.generate(scene.text, config.voice ?? "af_heart");
+        if (!scene.text)
+          throw new Error(
+            `Scene ${index + 1} is missing text for TTS workflow.`,
+          );
+
+        const audio = await this.kokoro.generate(
+          scene.text,
+          config.voice ?? "af_heart",
+        );
         let { audioLength } = audio;
         const { audio: audioStream } = audio;
 
-        if (index + 1 === inputScenes.length && config.paddingBack) {
+        if (index + 1 === inputScenes.length && config.paddingBack)
           audioLength += config.paddingBack / 1000;
-        }
 
         const tempId = cuid();
-        const tempWavFileName = `${tempId}.wav`;
-        const tempMp3FileName = `${tempId}.mp3`;
-        const tempWavPath = path.join(this.config.tempDirPath, tempWavFileName);
-        const tempMp3Path = path.join(this.config.tempDirPath, tempMp3FileName);
-        tempFiles.push(tempWavPath, tempMp3Path);
+        const tempWav = path.join(this.config.tempDirPath, `${tempId}.wav`);
+        const tempMp3 = path.join(this.config.tempDirPath, `${tempId}.mp3`);
+        tempFiles.push(tempWav, tempMp3);
 
-        await this.ffmpeg.saveNormalizedAudio(audioStream, tempWavPath);
-        const captions = await this.whisper.CreateCaption(tempWavPath);
-        await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
+        await this.ffmpeg.saveNormalizedAudio(audioStream, tempWav);
+        const captions = await this.whisper.CreateCaption(tempWav);
+        await this.ffmpeg.saveToMp3(audioStream, tempMp3);
 
-        const sceneVisualUrl = await this.getVisualForScene(scene, audioLength, excludeVideoIds, usedStaticImages, orientation, tempFiles);
+        const visualUrl = await this.getVisualForScene(
+          scene,
+          audioLength,
+          excludeVideoIds,
+          usedStaticImages,
+          orientation,
+          tempFiles,
+        );
 
         scenes.push({
           captions,
-          video: sceneVisualUrl,
+          video: visualUrl,
           audio: {
-            url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
+            url: `http://localhost:${this.config.port}/api/tmp/${path.basename(
+              tempMp3,
+            )}`,
             duration: audioLength,
           },
         });
@@ -214,18 +249,18 @@ export class ShortCreator {
 
       const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
       const effectiveDuration = totalDuration - overlap;
-      finalDuration = Math.max(0, effectiveDuration - TRIM_SECONDS);
+      finalDurationSec = Math.max(0, effectiveDuration - TRIM_SECONDS);
     }
 
-    const selectedMusic = this.findMusic(finalDuration, config.music);
-    logger.debug({ selectedMusic }, "Selected music for the video");
+    // ─── MUSIC & RENDER ─────────────────────────────
+    const music = this.findMusic(finalDurationSec, config.music);
 
     await this.remotion.render(
       {
-        music: selectedMusic,
+        music,
         scenes,
         config: {
-          durationMs: finalDuration * 1000,
+          durationMs: finalDurationSec * 1000,
           paddingBack: config.paddingBack,
           captionBackgroundColor: config.captionBackgroundColor,
           captionPosition: config.captionPosition,
@@ -236,84 +271,81 @@ export class ShortCreator {
       orientation,
     );
 
-    for (const file of tempFiles) {
-      logger.debug({ file }, "Removing temporary file");
-      fs.removeSync(file);
-    }
-
+    tempFiles.forEach((f) => fs.removeSync(f));
     return videoId;
   }
 
+  // ────────────────────────────────────────────
+  // HELPERS
+  // ────────────────────────────────────────────
   private async getVisualForScene(
     scene: SceneInput,
     duration: number,
     excludeVideoIds: string[],
     usedStaticImages: string[],
     orientation: OrientationEnum,
-    tempFiles: string[]
+    tempFiles: string[],
   ): Promise<string> {
-    if (scene.useLocalImage && this.availableStaticImages.length > 0) {
-      let eligibleImages = this.availableStaticImages.filter(
-        (img) => !usedStaticImages.includes(img),
+    if (scene.useLocalImage) {
+      const img = this.pickRandomStaticImage(orientation, usedStaticImages);
+      if (img) {
+        usedStaticImages.push(img);
+        return `http://localhost:${this.config.port}/api/static/images/${img}`;
+      }
+      logger.warn(
+        "Requested local image but none available; falling back to Pexels",
       );
-      if (eligibleImages.length === 0) {
-        eligibleImages = this.availableStaticImages;
-      }
-      const selectedImage =
-        eligibleImages[Math.floor(Math.random() * eligibleImages.length)];
-      usedStaticImages.push(selectedImage);
-      logger.debug(
-        { image: selectedImage },
-        "Using local static image for scene",
-      );
-      return `http://localhost:${this.config.port}/api/static/images/${selectedImage}`;
-    } else {
-      if (scene.useLocalImage && this.availableStaticImages.length === 0) {
-        logger.warn(
-          "Requested local image, but no static images are available or loaded. Falling back to Pexels if search terms provided.",
-        );
-      }
-      if (!scene.searchTerms || scene.searchTerms.length === 0) {
-        throw new Error(
-          `Scene has no searchTerms and is not configured to use a local image, or no local images are available.`,
-        );
-      }
-
-      const tempId = cuid();
-      const tempVideoFileName = `${tempId}.mp4`;
-      const tempVideoPath = path.join(this.config.tempDirPath, tempVideoFileName);
-      tempFiles.push(tempVideoPath);
-
-      const pexelsVideo = await this.pexelsApi.findVideo(scene.searchTerms, duration, excludeVideoIds, orientation);
-      excludeVideoIds.push(pexelsVideo.id);
-
-      logger.debug(`Downloading Pexels video from ${pexelsVideo.url} to ${tempVideoPath}`);
-      await this.downloadFile(pexelsVideo.url, tempVideoPath);
-
-      return `http://localhost:${this.config.port}/api/tmp/${tempVideoFileName}`;
     }
+
+    if (!scene.searchTerms || scene.searchTerms.length === 0)
+      throw new Error(
+        "Scene needs searchTerms when no local image can be provided",
+      );
+
+    const tempId = cuid();
+    const tempVideo = path.join(
+      this.config.tempDirPath,
+      `${tempId}.mp4`,
+    );
+    tempFiles.push(tempVideo);
+
+    const pexelsVideo = await this.pexelsApi.findVideo(
+      scene.searchTerms,
+      duration,
+      excludeVideoIds,
+      orientation,
+    );
+    excludeVideoIds.push(pexelsVideo.id);
+
+    await this.downloadFile(pexelsVideo.url, tempVideo);
+
+    return `http://localhost:${this.config.port}/api/tmp/${path.basename(
+      tempVideo,
+    )}`;
   }
 
   private async downloadFile(url: string, dest: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const fileStream = fs.createWriteStream(dest);
-      const httpClient = url.startsWith("https") ? https : http;
-      httpClient
-        .get(url, (response: http.IncomingMessage) => {
-          if (response.statusCode !== 200) {
-            reject(new Error(`Failed to download file: ${response.statusCode} ${response.statusMessage}`));
+      const out = fs.createWriteStream(dest);
+      const client = url.startsWith("https") ? https : http;
+      client
+        .get(url, (resp) => {
+          if (resp.statusCode !== 200) {
+            reject(
+              new Error(
+                `Failed to download (${resp.statusCode}) ${resp.statusMessage}`,
+              ),
+            );
             return;
           }
-          response.pipe(fileStream);
-          fileStream.on("finish", () => {
-            fileStream.close();
-            logger.debug(`File downloaded successfully to ${dest}`);
+          resp.pipe(out);
+          out.on("finish", () => {
+            out.close();
             resolve();
           });
         })
-        .on("error", (err: Error) => {
-          fs.unlink(dest, () => {});
-          logger.error(err, "Error downloading file:");
+        .on("error", (err) => {
+          fs.unlink(dest, () => void 0);
           reject(err);
         });
     });
@@ -324,32 +356,22 @@ export class ShortCreator {
   }
 
   public deleteVideo(videoId: string): void {
-    const videoPath = this.getVideoPath(videoId);
-    fs.removeSync(videoPath);
-    logger.debug({ videoId }, "Deleted video file");
+    fs.removeSync(this.getVideoPath(videoId));
   }
 
   public getVideo(videoId: string): Buffer {
-    const videoPath = this.getVideoPath(videoId);
-    if (!fs.existsSync(videoPath)) {
+    const pathToVideo = this.getVideoPath(videoId);
+    if (!fs.existsSync(pathToVideo))
       throw new Error(`Video ${videoId} not found`);
-    }
-    return fs.readFileSync(videoPath);
+    return fs.readFileSync(pathToVideo);
   }
 
   private findMusic(videoDuration: number, tag?: MusicMoodEnum): MusicForVideo {
-    const musicFiles = this.musicManager.musicList().filter((music) => {
-      if (tag) {
-        return music.mood === tag;
-      }
-      return true;
-    });
-
-    if (musicFiles.length === 0) {
-      logger.warn(
-        { tag },
-        "No music found for the given tag or no music available at all. Proceeding without music.",
-      );
+    const list = this.musicManager
+      .musicList()
+      .filter((m) => (tag ? m.mood === tag : true));
+    if (list.length === 0) {
+      logger.warn("No music available");
       return {
         file: "",
         start: 0,
@@ -358,39 +380,27 @@ export class ShortCreator {
         url: "",
       };
     }
-    return musicFiles[Math.floor(Math.random() * musicFiles.length)];
+    return list[Math.floor(Math.random() * list.length)];
   }
 
   public ListAvailableMusicTags(): MusicTag[] {
     const tags = new Set<MusicTag>();
-    this.musicManager.musicList().forEach((music) => {
-      tags.add(music.mood as MusicTag);
-    });
-    return Array.from(tags.values());
+    this.musicManager.musicList().forEach((m) => tags.add(m.mood as MusicTag));
+    return Array.from(tags);
   }
 
   public listAllVideos(): { id: string; status: VideoStatus }[] {
-    const videos: { id: string; status: VideoStatus }[] = [];
-    if (!fs.existsSync(this.config.videosDirPath)) {
-      return videos;
+    const list: { id: string; status: VideoStatus }[] = [];
+    if (fs.existsSync(this.config.videosDirPath)) {
+      fs.readdirSync(this.config.videosDirPath)
+        .filter((f) => f.endsWith(".mp4"))
+        .forEach((f) => list.push({ id: f.replace(".mp4", ""), status: "ready" }));
     }
-    const files = fs.readdirSync(this.config.videosDirPath);
-    for (const file of files) {
-      if (file.endsWith(".mp4")) {
-        const videoId = file.replace(".mp4", "");
-        let status: VideoStatus = "ready";
-        if (this.queue.find((item) => item.id === videoId)) {
-          status = "processing";
-        }
-        videos.push({ id: videoId, status });
-      }
-    }
-    for (const queueItem of this.queue) {
-      if (!videos.find((v) => v.id === queueItem.id)) {
-        videos.push({ id: queueItem.id, status: "processing" });
-      }
-    }
-    return videos;
+    this.queue.forEach((q) => {
+      if (!list.find((v) => v.id === q.id))
+        list.push({ id: q.id, status: "processing" });
+    });
+    return list;
   }
 
   public ListAvailableVoices(): string[] {

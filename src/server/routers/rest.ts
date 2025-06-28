@@ -226,36 +226,70 @@ export class APIRouter {
       },
     );
 
+    // this.router.get(
+    //   "/static/images/:filename",
+    //   (req: ExpressRequest, res: ExpressResponse) => {
+    //     const { filename } = req.params;
+    //     if (!filename) {
+    //       return res.status(400).json({ error: "filename is required" });
+    //     }
+    //
+    //     // Basic security: prevent path traversal
+    //     if (filename.includes("..") || filename.includes("/")) {
+    //       return res.status(400).json({ error: "Invalid filename" });
+    //     }
+    //
+    //     // const imagePath = path.join(this.config.staticDirPath, "images", filename);
+    //     const imagePath = path.join(this.config.staticDirPath, "stoic", filename);
+    //
+    //     if (!fs.existsSync(imagePath)) {
+    //       logger.warn({ imagePath }, "Static image not found for serving");
+    //       return res.status(404).json({ error: "Image not found" });
+    //     }
+    //
+    //     const mimeType = mime.lookup(imagePath) || 'application/octet-stream';
+    //     res.setHeader("Content-Type", mimeType);
+    //
+    //     const imageStream = fs.createReadStream(imagePath);
+    //     imageStream.on("error", (error) => {
+    //       logger.error(error, "Error reading static image file");
+    //       res.status(500).json({ error: "Error reading image file", filename });
+    //     });
+    //     imageStream.pipe(res);
+    //   },
+    // );
+
     this.router.get(
       "/static/images/:filename",
       (req: ExpressRequest, res: ExpressResponse) => {
         const { filename } = req.params;
-        if (!filename) {
-          return res.status(400).json({ error: "filename is required" });
-        }
+        if (!filename) return res.status(400).json({ error: "filename is required" });
 
-        // Basic security: prevent path traversal
-        if (filename.includes("..") || filename.includes("/")) {
+        // 🛡️ simple path-traversal guard
+        if (filename.includes("..") || filename.includes("/"))
           return res.status(400).json({ error: "Invalid filename" });
-        }
 
-        // const imagePath = path.join(this.config.staticDirPath, "images", filename);
-        const imagePath = path.join(this.config.staticDirPath, "stoic", filename);
+        // We now search BOTH portrait & landscape image folders
+        const tryPaths = [
+          path.join(this.config.staticDirPath, "stoic",           filename), // portrait
+          path.join(this.config.staticDirPath, "stoichorizontal", filename), // landscape
+        ];
 
-        if (!fs.existsSync(imagePath)) {
-          logger.warn({ imagePath }, "Static image not found for serving");
+        const hit = tryPaths.find((p) => fs.existsSync(p));
+        if (!hit) {
+          logger.warn({ filename }, "Static image not found");
           return res.status(404).json({ error: "Image not found" });
         }
 
-        const mimeType = mime.lookup(imagePath) || 'application/octet-stream';
+        const mimeType = mime.lookup(hit) || "application/octet-stream";
         res.setHeader("Content-Type", mimeType);
 
-        const imageStream = fs.createReadStream(imagePath);
-        imageStream.on("error", (error) => {
-          logger.error(error, "Error reading static image file");
-          res.status(500).json({ error: "Error reading image file", filename });
-        });
-        imageStream.pipe(res);
+        fs.createReadStream(hit)
+          .on("error", (err) => {
+            logger.error(err, "Reading static image failed");
+            res.status(500).json({ error: "Error reading image file", filename });
+          })
+          .pipe(res);
       },
     );
 
