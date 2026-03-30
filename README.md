@@ -6,6 +6,16 @@ This project is meant to provide a free alternative to heavy GPU-power hungry vi
 
 The repository was open-sourced by the [AI Agents A-Z Youtube Channel](https://www.youtube.com/channel/UCloXqLhp_KGhHBe1kwaL2Tg). We encourage you to check out the channel for more AI-related content and tutorials.
 
+## Fork Notes
+
+This repository is maintained in the fork at `github.com/saurabhthesuperhero/short-video-maker`.
+
+- Branch: `stoic/local-images-audio`
+- Purpose: Stoic local-image workflow plus audio-to-subtitle and narration experiments
+- Bundled custom assets in this branch: `84` Stoic images in `static/stoic`, `2` audio files in `static/audio`, and `1` narration file in `static/narrations`
+- Key custom behavior: local image scenes, extra FFmpeg and Whisper changes, and audio-oriented render experiments
+- Best fit: testing narration-first shorts that still use the Stoic image library
+
 The server exposes an [MCP](https://github.com/modelcontextprotocol) and a REST server.
 
 While the MCP server can be used with an AI Agent (like n8n) the REST endpoints provide more flexibility for video generation.
