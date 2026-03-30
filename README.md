@@ -4,6 +4,16 @@ An open source automated video creation tool for generating short-form video con
 
 This repository was open-sourced by the [AI Agents A-Z Youtube Channel](https://www.youtube.com/channel/UCloXqLhp_KGhHBe1kwaL2Tg). We encourage you to check out the channel for more AI-related content and tutorials.
 
+## Fork Notes
+
+This repository is maintained in the fork at `github.com/saurabhthesuperhero/short-video-maker`.
+
+- Branch: `experiment/longer-duration`
+- Purpose: duration and render-length experiments on top of the baseline project
+- Bundled custom assets in this branch: none
+- Stoic-specific local image workflow: not included on this branch
+- Best fit: preserving the earlier duration experiment separately from the Stoic branches
+
 ## Hardware requirements
 
 - CPU: at least 2 cores are recommended
