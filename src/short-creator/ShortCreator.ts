@@ -17,6 +17,16 @@ import { MusicManager } from "./music";
 
 const CROSS_FADE_SECONDS = 0.3;
 const TRIM_SECONDS = 3; // 🔥 NEW: seconds trimmed off the tail of every render
+const STOIC_FRIEND_PROMO_TEXT = "Start your Stoic journey with Stoic Friend.";
+const STOIC_FRIEND_PROMO_SUBTEXT = "Play Store link in bio";
+const STOIC_FRIEND_PROMO_SPEED = 1.2;
+const STOIC_FRIEND_PROMO_IMAGE_COUNT = 4;
+type BrandPromoScene = {
+  sceneType: "brandPromo";
+  promoText: string;
+  promoSubtext: string;
+  promoImages: string[];
+};
 
 import type {
   SceneInput,
@@ -133,6 +143,7 @@ export class ShortCreator {
     );
 
     const scenes: Scene[] = [];
+    const scenesToRender = this.insertBrandPromoScene(inputScenes);
     let totalDuration = 0;
     const excludeVideoIds: string[] = []; // For Pexels, to avoid duplicate videos
     const tempFiles: string[] = [];
@@ -142,7 +153,41 @@ export class ShortCreator {
       config.orientation || OrientationEnum.portrait;
 
     let index = 0;
-    for (const scene of inputScenes) {
+    for (const scene of scenesToRender) {
+      if (this.isBrandPromoScene(scene)) {
+        const audio = await this.kokoro.generate(
+          scene.promoText,
+          config.voice ?? "af_heart",
+          { speed: STOIC_FRIEND_PROMO_SPEED },
+        );
+        const { audioLength } = audio;
+        const { audio: audioStream } = audio;
+
+        const tempId = cuid();
+        const tempMp3FileName = `${tempId}.mp3`;
+        const tempMp3Path = path.join(this.config.tempDirPath, tempMp3FileName);
+        tempFiles.push(tempMp3Path);
+
+        await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
+
+        scenes.push({
+          captions: [],
+          video: "promo://stoicfriend",
+          audio: {
+            url: `http://localhost:${this.config.port}/api/tmp/${tempMp3FileName}`,
+            duration: audioLength,
+          },
+          sceneType: "brandPromo",
+          promoText: scene.promoText,
+          promoSubtext: scene.promoSubtext,
+          promoImages: scene.promoImages,
+        });
+
+        totalDuration += audioLength;
+        index++;
+        continue;
+      }
+
       const audio = await this.kokoro.generate(
         scene.text,
         config.voice ?? "af_heart",
@@ -259,7 +304,7 @@ export class ShortCreator {
     }
 
     // ─── adjust for cross-fade overlaps ───
-    const overlap = Math.max(0, inputScenes.length - 1) * CROSS_FADE_SECONDS;
+    const overlap = Math.max(0, scenesToRender.length - 1) * CROSS_FADE_SECONDS;
     const effectiveDuration = totalDuration - overlap;
 
     /* 🔥 NEW: subtract TRIM_SECONDS so the rendered video is exactly
@@ -296,6 +341,46 @@ export class ShortCreator {
 
   public getVideoPath(videoId: string): string {
     return path.join(this.config.videosDirPath, `${videoId}.mp4`);
+  }
+
+  private insertBrandPromoScene(
+    inputScenes: SceneInput[],
+  ): (SceneInput | BrandPromoScene)[] {
+    if (inputScenes.length === 0) {
+      return inputScenes;
+    }
+
+    const promoScene = {
+      sceneType: "brandPromo" as const,
+      promoText: STOIC_FRIEND_PROMO_TEXT,
+      promoSubtext: STOIC_FRIEND_PROMO_SUBTEXT,
+      promoImages: this.pickPromoImages(),
+    };
+
+    return [inputScenes[0], promoScene, ...inputScenes.slice(1)];
+  }
+
+  private pickPromoImages(): string[] {
+    if (this.availableStaticImages.length === 0) {
+      return [];
+    }
+
+    const shuffled = [...this.availableStaticImages].sort(
+      () => Math.random() - 0.5,
+    );
+
+    return shuffled
+      .slice(0, STOIC_FRIEND_PROMO_IMAGE_COUNT)
+      .map(
+        (imageName) =>
+          `http://localhost:${this.config.port}/api/static/images/${imageName}`,
+      );
+  }
+
+  private isBrandPromoScene(
+    scene: SceneInput | BrandPromoScene,
+  ): scene is BrandPromoScene {
+    return "sceneType" in scene && scene.sceneType === "brandPromo";
   }
 
   public deleteVideo(videoId: string): void {

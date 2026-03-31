@@ -4,7 +4,9 @@ import stoicFriendIcon from "../../../static/branding/stoicfriend-app-icon.png";
 
 export const STOIC_FRIEND_BANNER_HEIGHT = 184;
 
-export const StoicFriendBanner: React.FC = () => {
+export const StoicFriendBanner: React.FC<{ hidden?: boolean }> = ({
+  hidden = false,
+}) => {
   return (
     <div
       style={{
@@ -25,6 +27,8 @@ export const StoicFriendBanner: React.FC = () => {
         boxShadow:
           "0 26px 70px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255,255,255,0.08)",
         overflow: "hidden",
+        opacity: hidden ? 0 : 1,
+        transition: "opacity 160ms ease-out",
       }}
     >
       <div

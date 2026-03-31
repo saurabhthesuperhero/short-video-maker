@@ -12,6 +12,9 @@ export class Kokoro {
   async generate(
     text: string,
     voice: Voices,
+    options?: {
+      speed?: number;
+    },
   ): Promise<{
     audio: ArrayBuffer;
     audioLength: number;
@@ -19,6 +22,7 @@ export class Kokoro {
     const splitter = new TextSplitterStream();
     const stream = this.tts.stream(splitter, {
       voice,
+      speed: options?.speed,
     });
     splitter.push(text);
     splitter.close();
@@ -36,7 +40,10 @@ export class Kokoro {
     }
 
     const mergedAudioBuffer = Kokoro.concatWavBuffers(audioBuffers);
-    logger.debug({ text, voice, audioLength }, "Audio generated with Kokoro");
+    logger.debug(
+      { text, voice, audioLength, speed: options?.speed },
+      "Audio generated with Kokoro",
+    );
 
     return {
       audio: mergedAudioBuffer,

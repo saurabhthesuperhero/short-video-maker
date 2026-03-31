@@ -62,6 +62,10 @@ export type Scene = {
     url: string;
     duration: number;
   };
+  sceneType?: "default" | "brandPromo";
+  promoText?: string;
+  promoSubtext?: string;
+  promoImages?: string[];
 };
 
 // export const sceneInput = z.object({

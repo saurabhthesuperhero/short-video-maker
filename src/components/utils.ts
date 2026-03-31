@@ -17,6 +17,10 @@ export const shortVideoSchema = z.object({
         duration: z.number(),
       }),
       video: z.string(),
+      sceneType: z.enum(["default", "brandPromo"]).optional(),
+      promoText: z.string().optional(),
+      promoSubtext: z.string().optional(),
+      promoImages: z.array(z.string()).optional(),
     }),
   ),
   config: z.object({

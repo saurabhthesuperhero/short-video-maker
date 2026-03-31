@@ -22,6 +22,7 @@ import {
   STOIC_FRIEND_BANNER_HEIGHT,
   StoicFriendBanner,
 } from "./StoicFriendBanner";
+import { StoicFriendPromoScene } from "./StoicFriendPromoScene";
 
 const { fontFamily } = loadFont(); // "Barlow Condensed"
 
@@ -49,10 +50,40 @@ export const PortraitVideo: React.FC<
 
   /* ---------- scene build ---------- */
   let currentFrameOffset = 0;
+  let timelineFrameOffset = 0;
+  const sceneTimings = scenes.map((scene, sceneIdx) => {
+    let sceneFrames = Math.round(scene.audio.duration * fps);
+    if (config.paddingBack && sceneIdx === scenes.length - 1) {
+      sceneFrames += Math.round((config.paddingBack / 1000) * fps);
+    }
+    const isLastScene = sceneIdx === scenes.length - 1;
+    const sceneStart =
+      sceneIdx === 0
+        ? timelineFrameOffset
+        : timelineFrameOffset - TRANSITION_FRAMES;
+
+    timelineFrameOffset = isLastScene
+      ? sceneStart + sceneFrames
+      : sceneStart + sceneFrames - TRANSITION_FRAMES;
+
+    return {
+      sceneStart,
+      sceneFrames,
+      sceneType: scene.sceneType ?? "default",
+    };
+  });
+  const brandPromoVisible = sceneTimings.some((sceneTiming) => {
+    const sceneEnd = sceneTiming.sceneStart + sceneTiming.sceneFrames;
+    return (
+      sceneTiming.sceneType === "brandPromo" &&
+      globalFrame >= sceneTiming.sceneStart &&
+      globalFrame < sceneEnd
+    );
+  });
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
-      <StoicFriendBanner />
+      <StoicFriendBanner hidden={brandPromoVisible} />
 
       {music?.url && (
         <Audio
@@ -67,6 +98,7 @@ export const PortraitVideo: React.FC<
 
       {scenes.map((scene, sceneIdx) => {
         const { captions, audio, video: visualUrl } = scene;
+        const sceneType = scene.sceneType ?? "default";
         const pages = createCaptionPages({
           captions,
           lineMaxLength: 20,
@@ -215,117 +247,128 @@ export const PortraitVideo: React.FC<
             <AbsoluteFill
               style={{
                 opacity: finalOpacity,
-                transform,
+                transform: sceneType === "brandPromo" ? undefined : transform,
                 overflow: "hidden",
               }}
             >
-              {isStatic ? (
-                <Img
-                  src={visualUrl}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
+              {sceneType === "brandPromo" ? (
+                <StoicFriendPromoScene
+                  promoText={scene.promoText}
+                  promoSubtext={scene.promoSubtext}
+                  promoImages={scene.promoImages}
                 />
               ) : (
-                <OffthreadVideo
-                  src={visualUrl}
-                  muted
-                  style={{ width: "100%", height: "100%" }}
-                />
+                <>
+                  {isStatic ? (
+                    <Img
+                      src={visualUrl}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <OffthreadVideo
+                      src={visualUrl}
+                      muted
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  )}
+                  <AbsoluteFill
+                    style={{
+                      background:
+                        "linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.48) 24%, rgba(0,0,0,0.22) 54%, rgba(0,0,0,0.50) 100%)",
+                    }}
+                  />
+                </>
               )}
-              <AbsoluteFill
-                style={{
-                  background:
-                    "linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.48) 24%, rgba(0,0,0,0.22) 54%, rgba(0,0,0,0.50) 100%)",
-                }}
-              />
             </AbsoluteFill>
 
             {/* voice-over */}
             {audio?.url && <Audio src={audio.url} />}
 
             {/* captions */}
-            {pages.map((page, pageIdx) => {
+            {sceneType !== "brandPromo" &&
+              pages.map((page, pageIdx) => {
               const pageStart = Math.round((page.startMs / 1000) * fps);
               const pageFrames = Math.round(
                 ((page.endMs - page.startMs) / 1000) * fps,
               );
 
-              return (
-                <Sequence
-                  key={`scene-${sceneIdx}-page-${pageIdx}`}
-                  from={pageStart}
-                  durationInFrames={pageFrames}
-                >
-                  <AbsoluteFill
-                    style={{
-                      display: "flex",
-                      alignItems:
-                        captionPosition === "top"
-                          ? "flex-start"
-                          : captionPosition === "bottom"
-                            ? "flex-end"
-                            : "center",
-                      justifyContent: "center",
-                      paddingTop:
-                        captionPosition === "top"
-                          ? STOIC_FRIEND_BANNER_HEIGHT + 72
-                          : 0,
-                      paddingLeft: 20,
-                      paddingRight: 20,
-                    }}
+                return (
+                  <Sequence
+                    key={`scene-${sceneIdx}-page-${pageIdx}`}
+                    from={pageStart}
+                    durationInFrames={pageFrames}
                   >
-                    <div style={{ width: "90%", textAlign: "center" }}>
-                      {page.lines.map((line, lIdx) => (
-                        <p
-                          key={`line-${lIdx}`}
-                          style={{
-                            fontSize: "5em",
-                            fontFamily,
-                            fontWeight: 900,
-                            color: "white",
-                            WebkitTextStroke: "2px black",
-                            textShadow: "0 0 10px black",
-                            textTransform: "uppercase",
-                            margin: "0.2em 0",
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {line.texts.map((txt, tIdx) => {
-                            const relStart = Math.round(
-                              (txt.startMs / 1000) * fps,
-                            );
-                            const relEnd = Math.round(
-                              (txt.endMs / 1000) * fps,
-                            );
-                            const localFrame = globalFrame - sceneStart;
-                            const isActive =
-                              localFrame >= relStart && localFrame <= relEnd;
+                    <AbsoluteFill
+                      style={{
+                        display: "flex",
+                        alignItems:
+                          captionPosition === "top"
+                            ? "flex-start"
+                            : captionPosition === "bottom"
+                              ? "flex-end"
+                              : "center",
+                        justifyContent: "center",
+                        paddingTop:
+                          captionPosition === "top"
+                            ? STOIC_FRIEND_BANNER_HEIGHT + 72
+                            : 0,
+                        paddingLeft: 20,
+                        paddingRight: 20,
+                      }}
+                    >
+                      <div style={{ width: "90%", textAlign: "center" }}>
+                        {page.lines.map((line, lIdx) => (
+                          <p
+                            key={`line-${lIdx}`}
+                            style={{
+                              fontSize: "5em",
+                              fontFamily,
+                              fontWeight: 900,
+                              color: "white",
+                              WebkitTextStroke: "2px black",
+                              textShadow: "0 0 10px black",
+                              textTransform: "uppercase",
+                              margin: "0.2em 0",
+                              lineHeight: 1.1,
+                            }}
+                          >
+                            {line.texts.map((txt, tIdx) => {
+                              const relStart = Math.round(
+                                (txt.startMs / 1000) * fps,
+                              );
+                              const relEnd = Math.round(
+                                (txt.endMs / 1000) * fps,
+                              );
+                              const localFrame = globalFrame - sceneStart;
+                              const isActive =
+                                localFrame >= relStart && localFrame <= relEnd;
 
-                            return (
-                              <React.Fragment key={`txt-${tIdx}`}>
-                                <span
-                                  style={{
-                                    fontWeight: "bold",
-                                    display: "inline-block",
-                                    ...(isActive ? activeStyle : {}),
-                                  }}
-                                >
-                                  {txt.text}
-                                </span>
-                                {tIdx < line.texts.length - 1 ? " " : ""}
-                              </React.Fragment>
-                            );
-                          })}
-                        </p>
-                      ))}
-                    </div>
-                  </AbsoluteFill>
-                </Sequence>
-              );
-            })}
+                              return (
+                                <React.Fragment key={`txt-${tIdx}`}>
+                                  <span
+                                    style={{
+                                      fontWeight: "bold",
+                                      display: "inline-block",
+                                      ...(isActive ? activeStyle : {}),
+                                    }}
+                                  >
+                                    {txt.text}
+                                  </span>
+                                  {tIdx < line.texts.length - 1 ? " " : ""}
+                                </React.Fragment>
+                              );
+                            })}
+                          </p>
+                        ))}
+                      </div>
+                    </AbsoluteFill>
+                  </Sequence>
+                );
+              })}
           </Sequence>
         );
       })}
