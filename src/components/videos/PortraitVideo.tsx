@@ -18,6 +18,10 @@ import {
   createCaptionPages,
   shortVideoSchema,
 } from "../utils";
+import {
+  STOIC_FRIEND_BANNER_HEIGHT,
+  StoicFriendBanner,
+} from "./StoicFriendBanner";
 
 const { fontFamily } = loadFont(); // "Barlow Condensed"
 
@@ -48,6 +52,8 @@ export const PortraitVideo: React.FC<
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
+      <StoicFriendBanner />
+
       {music?.url && (
         <Audio
           loop
@@ -232,7 +238,7 @@ export const PortraitVideo: React.FC<
               <AbsoluteFill
                 style={{
                   background:
-                    "linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.35))",
+                    "linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.48) 24%, rgba(0,0,0,0.22) 54%, rgba(0,0,0,0.50) 100%)",
                 }}
               />
             </AbsoluteFill>
@@ -263,7 +269,12 @@ export const PortraitVideo: React.FC<
                             ? "flex-end"
                             : "center",
                       justifyContent: "center",
-                      padding: "0 20px",
+                      paddingTop:
+                        captionPosition === "top"
+                          ? STOIC_FRIEND_BANNER_HEIGHT + 72
+                          : 0,
+                      paddingLeft: 20,
+                      paddingRight: 20,
                     }}
                   >
                     <div style={{ width: "90%", textAlign: "center" }}>
