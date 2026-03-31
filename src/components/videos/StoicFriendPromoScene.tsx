@@ -7,6 +7,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import stoicFriendIcon from "../../../static/branding/stoicfriend-app-icon.png";
+import googlePlayBadge from "../../../static/branding/official-google-play/get-it-on-google-play-badge.svg";
 
 type StoicFriendPromoSceneProps = {
   promoText?: string;
@@ -15,8 +16,8 @@ type StoicFriendPromoSceneProps = {
 };
 
 export const StoicFriendPromoScene: React.FC<StoicFriendPromoSceneProps> = ({
-  promoText = "Start your Stoic journey with Stoic Friend",
-  promoSubtext = "Play Store link in bio",
+  promoText = "Start your Stoic journey with the Stoicfriend app",
+  promoSubtext = "Link in bio",
   promoImages = [],
 }) => {
   const frame = useCurrentFrame();
@@ -194,7 +195,24 @@ export const StoicFriendPromoScene: React.FC<StoicFriendPromoSceneProps> = ({
               zIndex: 2,
             }}
           >
-            Stoic Friend
+            Stoicfriend
+          </div>
+          <div
+            style={{
+              padding: "6px 14px 7px",
+              borderRadius: 9999,
+              background: "rgba(212,175,55,0.14)",
+              border: "1px solid rgba(212,175,55,0.32)",
+              fontFamily: "Barlow Condensed, sans-serif",
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: 2.2,
+              color: "#f5df91",
+              textTransform: "uppercase",
+              zIndex: 2,
+            }}
+          >
+            App
           </div>
           <div
             style={{
@@ -212,19 +230,32 @@ export const StoicFriendPromoScene: React.FC<StoicFriendPromoSceneProps> = ({
           </div>
           <div
             style={{
-              padding: "12px 22px",
-              borderRadius: 9999,
-              background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(212,175,55,0.34)",
-              fontFamily: "Barlow Condensed, sans-serif",
-              fontSize: 28,
-              fontWeight: 600,
-              letterSpacing: 1.1,
-              color: "rgba(255,255,255,0.9)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 12,
               zIndex: 2,
             }}
           >
-            {promoSubtext}
+            <Img
+              src={googlePlayBadge}
+              style={{
+                width: 290,
+                height: "auto",
+                filter: "drop-shadow(0 14px 26px rgba(0,0,0,0.24))",
+              }}
+            />
+            <div
+              style={{
+                fontFamily: "Barlow Condensed, sans-serif",
+                fontSize: 24,
+                fontWeight: 600,
+                letterSpacing: 1.2,
+                color: "rgba(255,255,255,0.86)",
+              }}
+            >
+              {promoSubtext}
+            </div>
           </div>
         </div>
       </div>

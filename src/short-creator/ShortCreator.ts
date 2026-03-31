@@ -17,8 +17,9 @@ import { MusicManager } from "./music";
 
 const CROSS_FADE_SECONDS = 0.3;
 const TRIM_SECONDS = 3; // 🔥 NEW: seconds trimmed off the tail of every render
-const STOIC_FRIEND_PROMO_TEXT = "Start your Stoic journey with Stoic Friend.";
-const STOIC_FRIEND_PROMO_SUBTEXT = "Play Store link in bio";
+const STOIC_FRIEND_PROMO_TEXT =
+  "Start your Stoic journey with the Stoic Friend app.";
+const STOIC_FRIEND_PROMO_SUBTEXT = "Link in bio";
 const STOIC_FRIEND_PROMO_SPEED = 1.2;
 const STOIC_FRIEND_PROMO_IMAGE_COUNT = 4;
 type BrandPromoScene = {

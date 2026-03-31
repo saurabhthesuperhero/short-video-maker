@@ -1,5 +1,5 @@
 import React from "react";
-import { Img } from "remotion";
+import { Img, interpolate, useCurrentFrame } from "remotion";
 import stoicFriendIcon from "../../../static/branding/stoicfriend-app-icon.png";
 
 export const STOIC_FRIEND_BANNER_HEIGHT = 184;
@@ -7,6 +7,11 @@ export const STOIC_FRIEND_BANNER_HEIGHT = 184;
 export const StoicFriendBanner: React.FC<{ hidden?: boolean }> = ({
   hidden = false,
 }) => {
+  const frame = useCurrentFrame();
+  const pulse = (Math.sin(frame / 18) + 1) / 2;
+  const pulseScale = interpolate(pulse, [0, 1], [1, 1.012]);
+  const pulseGlow = interpolate(pulse, [0, 1], [0.38, 0.5]);
+
   return (
     <div
       style={{
@@ -29,6 +34,7 @@ export const StoicFriendBanner: React.FC<{ hidden?: boolean }> = ({
         overflow: "hidden",
         opacity: hidden ? 0 : 1,
         transition: "opacity 160ms ease-out",
+        transform: `scale(${pulseScale})`,
       }}
     >
       <div
@@ -49,6 +55,7 @@ export const StoicFriendBanner: React.FC<{ hidden?: boolean }> = ({
           borderRadius: 999,
           background:
             "linear-gradient(90deg, rgba(212,175,55,0.1), rgba(212,175,55,0.95), rgba(212,175,55,0.1))",
+          opacity: pulseGlow,
         }}
       />
       <div
@@ -102,7 +109,7 @@ export const StoicFriendBanner: React.FC<{ hidden?: boolean }> = ({
               lineHeight: 1,
             }}
           >
-            Stoic Friend
+            Stoicfriend
           </div>
           <div
             style={{
